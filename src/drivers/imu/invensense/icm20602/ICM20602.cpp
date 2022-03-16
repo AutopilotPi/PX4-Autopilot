@@ -133,7 +133,7 @@ int ICM20602::probe()
 {
 	const uint8_t whoami = RegisterRead(Register::WHO_AM_I);
 
-	if (whoami != WHOAMI) {
+	if (whoami != WHOAMI_ICM20602 && whoami != WHOAMI_ICM20600) {
 		DEVICE_DEBUG("unexpected WHO_AM_I 0x%02x", whoami);
 		return PX4_ERROR;
 	}
@@ -159,8 +159,7 @@ void ICM20602::RunImpl()
 
 		// The reset value is 0x00 for all registers other than the registers below
 		//  Document Number: DS-000176 Page 31 of 57
-		if ((RegisterRead(Register::WHO_AM_I) == WHOAMI)
-		    && (RegisterRead(Register::PWR_MGMT_1) == 0x41)
+		if ((RegisterRead(Register::PWR_MGMT_1) == 0x41)
 		    && (RegisterRead(Register::CONFIG) == 0x80)) {
 
 			// offset registers (factory calibration) should not change during normal operation
