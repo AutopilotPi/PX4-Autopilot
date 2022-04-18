@@ -38,12 +38,13 @@ else()
 endif()
 
 add_custom_target(upload
-	COMMAND mkdir -p ~/fly
-	COMMAND cp  ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/*   ~/fly/
-	COMMAND cp ${PX4_SOURCE_DIR}/posix-configs/rpi/*.config  ~/fly/
-	COMMAND cp ${PX4_BINARY_DIR}/etc  ~/fly/ -r
-	COMMAND tar -zcvf ~/fly.tar.gz ~/fly
-	DEPENDS px4
-	COMMENT "uploading px4"
-	USES_TERMINAL
+        COMMAND rm ~/fly -rf
+        COMMAND mkdir -p ~/fly
+        COMMAND cp -d ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/*   ~/fly/
+        COMMAND cp -d ${PX4_SOURCE_DIR}/posix-configs/pipx4/*.config  ~/fly/
+        COMMAND cp -d ${PX4_BINARY_DIR}/etc  ~/fly/ -r
+        COMMAND tar -cvf ~/fly.tar ~/fly
+        DEPENDS px4
+        COMMENT "uploading px4"
+        USES_TERMINAL
 )
