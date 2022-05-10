@@ -1,0 +1,11 @@
+module_name: FPGA I2C PWM Output
+actuator_output:
+  output_groups:
+    - param_prefix: FPGA_PWM
+      channel_label: 'Channel'
+      standard_params:
+        disarmed: { min: 0, max: 1000, default: 0 }
+        min: { min: 0, max: 1000, default: 0 }
+        max: { min: 0, max: 1000, default: 1000 }
+        failsafe: { min: 0, max: 1000 }
+      num_channels: 4
