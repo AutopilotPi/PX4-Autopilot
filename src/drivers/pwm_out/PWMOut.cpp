@@ -439,8 +439,6 @@ bool PWMOut::updateOutputs(bool stop_motors, uint16_t outputs[MAX_ACTUATORS],
 
 void PWMOut::Run()
 {
-	SmartLock lock_guard(_lock);
-
 	if (should_exit()) {
 		ScheduleClear();
 		_mixing_output.unregister();
@@ -448,6 +446,8 @@ void PWMOut::Run()
 		//exit_and_cleanup();
 		return;
 	}
+
+	SmartLock lock_guard(_lock);
 
 	perf_begin(_cycle_perf);
 	perf_count(_interval_perf);
@@ -717,8 +717,6 @@ int PWMOut::pwm_ioctl(device::file_t *filp, int cmd, unsigned long arg)
 
 	case PWM_SERVO_SET_ARM_OK:
 	case PWM_SERVO_CLEAR_ARM_OK:
-	case PWM_SERVO_SET_FORCE_SAFETY_OFF:
-	case PWM_SERVO_SET_FORCE_SAFETY_ON:
 		break;
 
 	case PWM_SERVO_DISARM:
