@@ -120,7 +120,7 @@ void FPGA_I2C_PWM::disableAllOutput()
 {
 	uint16_t temp=0;
 	for(int i=0;i<4;++i){
-		setPWM(i,&temp);
+		setPWM(i,temp);
 	}
 }
 

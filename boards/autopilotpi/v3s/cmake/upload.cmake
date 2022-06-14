@@ -41,7 +41,7 @@ add_custom_target(upload
         COMMAND rm ~/fly -rf
         COMMAND mkdir -p ~/fly
         COMMAND cp -d ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/*   ~/fly/
-        COMMAND cp -d ${PX4_SOURCE_DIR}/posix-configs/pipx4/*.config  ~/fly/
+        COMMAND cp -d ${PX4_SOURCE_DIR}/posix-configs/autopilotpi/*.config  ~/fly/
         COMMAND cp -d ${PX4_BINARY_DIR}/etc  ~/fly/ -r
         COMMAND tar -cvf ~/fly.tar ~/fly
         DEPENDS px4
