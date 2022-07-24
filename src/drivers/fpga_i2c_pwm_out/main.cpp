@@ -48,9 +48,11 @@
 #include <px4_platform_common/getopt.h>
 
 #include "fpga_i2c_pwm_out.h"
+#include <stdarg.h>
 
 #define FPGA_I2C_PWM_DEFAULT_IICBUS  0
 #define FPGA_I2C_PWM_DEFAULT_ADDRESS (0x20)
+
 
 using namespace fpga_i2c_pwm;
 using namespace time_literals;
@@ -96,7 +98,9 @@ private:
 	// used to compare and cancel unecessary scheduling changes caused by parameter update
 	int32_t _last_fetched_Freq = -1;
 	// If this value is above zero, then change freq and scheduling in running state.
-	float _targetFreq = 8000.0f;
+	float _targetFreq = 500.0f;
+	float _auxFreq = 20000.0f;
+	uint16_t _aux_out_channels=0;
 
 
 	void Run() override;
@@ -172,161 +176,95 @@ void FPGA_I2C_PWM_Wrapper::updateParams()
 
 }
 
+
+int32_t getParam(const char * param_name){
+	param_t param_h = param_find(param_name);
+	int32_t temp=0xdeadbeef;
+	if (param_h != PARAM_INVALID) {
+		param_get(param_h,&temp);
+		PX4_DEBUG("success get:%s",param_name);
+
+	} else {
+		PX4_DEBUG("PARAM_INVALID: %s", param_name);
+	}
+	return temp;
+}
+
+int32_t getParamWithSprintf(const char * format, int num){
+
+	char buf[16]={0};
+	//va_list ap;
+	//va_start(ap, format);
+	sprintf(buf,format,num);
+	//va_end(ap);
+	return getParam(buf);
+}
+
 void FPGA_I2C_PWM_Wrapper::updatePWMParams()
 {
 	if (_mixing_output.useDynamicMixing()) {
 		return;
 	}
 
-	// update pwm params
-	const char *pname_format_pwm_ch_max[2] = {"PWM_MAIN_MAX%d", "PWM_AUX_MAX%d"};
-	const char *pname_format_pwm_ch_min[2] = {"PWM_MAIN_MIN%d", "PWM_AUX_MIN%d"};
-	const char *pname_format_pwm_ch_fail[2] = {"PWM_MAIN_FAIL%d", "PWM_AUX_FAIL%d"};
-	const char *pname_format_pwm_ch_dis[2] = {"PWM_MAIN_DIS%d", "PWM_AUX_DIS%d"};
-	const char *pname_format_pwm_ch_rev[2] = {"PWM_MAIN_REV%d", "PWM_AUX_REV%d"};
+	int32_t main_max,aux_max,aux_min,
+		main_min,aux_dis,
+		main_dis;
 
-	int32_t default_pwm_max = PWM_DEFAULT_MAX,
-		default_pwm_min = PWM_DEFAULT_MIN,
-		default_pwm_fail = PWM_DEFAULT_MIN,
-		default_pwm_dis = PWM_MOTOR_OFF;
 
-	param_t param_h = param_find("PWM_MAIN_MAX");
+	int32_t aux_out_temp=0;
 
-	if (param_h != PARAM_INVALID) {
-		param_get(param_h, &default_pwm_max);
 
-	} else {
-		PX4_DEBUG("PARAM_INVALID: %s", "PWM_MAIN_MAX");
+	aux_out_temp=getParam("PWM_AUX_OUT");
+
+	for(; aux_out_temp!=0 ;aux_out_temp/=10){    // aux_out_temp may be 1234, which means 0xF in bitmask
+		int32_t temp = aux_out_temp % 10;
+		_aux_out_channels |= 1<<(temp-1);
 	}
+#define SET_VAL_WITH_DEFAULT_VAL(val,target,d_val)       val = ((uint32_t)target!=0xdeadbeef)?target:d_val
 
-	param_h = param_find("PWM_MAIN_MIN");
+	SET_VAL_WITH_DEFAULT_VAL(main_max, getParam("PWM_MAIN_MAX"),PWM_DEFAULT_MAX);
+	SET_VAL_WITH_DEFAULT_VAL(main_min, getParam("PWM_MAIN_MIN"),PWM_DEFAULT_MIN);
+	SET_VAL_WITH_DEFAULT_VAL(main_dis, getParam("PWM_MAIN_DISARM"),PWM_MOTOR_OFF);
 
-	if (param_h != PARAM_INVALID) {
-		param_get(param_h, &default_pwm_min);
+	SET_VAL_WITH_DEFAULT_VAL(aux_max, getParam("PWM_AUX_MAX"),PWM_DEFAULT_MAX);
+	SET_VAL_WITH_DEFAULT_VAL(aux_min, getParam("PWM_AUX_MIN"),PWM_DEFAULT_MIN);
+	SET_VAL_WITH_DEFAULT_VAL(aux_dis, getParam("PWM_AUX_DISARM"),PWM_MOTOR_OFF);
 
-	} else {
-		PX4_DEBUG("PARAM_INVALID: %s", "PWM_MAIN_MIN");
-	}
+	// notice: use the val of PWM_MAIN as the default value, which is different from PX4 document.
 
-	param_h = param_find("PWM_MAIN_RATE");
+	for(int i=0;i<FPGA_PWM_OUTPUT_MAX_CHANNELS;++i){
+		uint16_t &reverse_pwm_mask = _mixing_output.reverseOutputMask();
+		uint8_t param_index=i+1;  // param_index start from 1
+		reverse_pwm_mask&= ~(1<<i);
+		if( _aux_out_channels  & (1<<i) ){
+			_mixing_output.maxValue(i)=aux_max;
+			_mixing_output.minValue(i)=aux_min;
+			_mixing_output.failsafeValue(i)=aux_min;
+			_mixing_output.disarmedValue(i)=aux_dis;
+			//SET_VAL_WITH_DEFAULT_VAL(_mixing_output.failsafeValue(i),getParamWithSprintf("PWM_AUX_FAIL%d",param_index),default_pwm_fail);
+			//SET_VAL_WITH_DEFAULT_VAL(_mixing_output.disarmedValue(i),getParamWithSprintf("PWM_AUX_DIS%d",param_index),default_pwm_dis);
+			reverse_pwm_mask|= (getParamWithSprintf("PWM_AUX_REV%d",param_index)?1:0)<<i;
 
-	if (param_h != PARAM_INVALID) {
-		int32_t pval = 0;
-		param_get(param_h, &pval);
-
-		if (_last_fetched_Freq != pval) {
-			_last_fetched_Freq = pval;
-			_targetFreq = (float)pval;  // update only if changed
-		}
-
-	} else {
-		PX4_DEBUG("PARAM_INVALID: %s", "PWM_MAIN_RATE");
-	}
-
-	for (int i = 0; i < FPGA_PWM_OUTPUT_MAX_CHANNELS; i++) {
-		char pname[16];
-		uint8_t param_group, param_index;
-
-		if (i <= 7) {	// Main channel
-			param_group = 0;
-			param_index = i + 1;
-
-		} else {	// AUX
-			param_group = 1;
-			param_index = i - 8 + 1;
-		}
-
-		sprintf(pname, pname_format_pwm_ch_max[param_group], param_index);
-		param_h = param_find(pname);
-
-		if (param_h != PARAM_INVALID) {
-			int32_t pval = 0;
-			param_get(param_h, &pval);
-
-			if (pval != -1) {
-				_mixing_output.maxValue(i) = pval;
-
-			} else {
-				_mixing_output.maxValue(i) = default_pwm_max;
-			}
-
-		} else {
-			PX4_DEBUG("PARAM_INVALID: %s", pname);
-		}
-
-		sprintf(pname, pname_format_pwm_ch_min[param_group], param_index);
-		param_h = param_find(pname);
-
-		if (param_h != PARAM_INVALID) {
-			int32_t pval = 0;
-			param_get(param_h, &pval);
-
-			if (pval != -1) {
-				_mixing_output.minValue(i) = pval;
-
-			} else {
-				_mixing_output.minValue(i) = default_pwm_min;
-			}
-
-		} else {
-			PX4_DEBUG("PARAM_INVALID: %s", pname);
-		}
-
-		sprintf(pname, pname_format_pwm_ch_fail[param_group], param_index);
-		param_h = param_find(pname);
-
-		if (param_h != PARAM_INVALID) {
-			int32_t pval = 0;
-			param_get(param_h, &pval);
-
-			if (pval != -1) {
-				_mixing_output.failsafeValue(i) = pval;
-
-			} else {
-				_mixing_output.failsafeValue(i) = default_pwm_fail;
-			}
-
-		} else {
-			PX4_DEBUG("PARAM_INVALID: %s", pname);
-		}
-
-		sprintf(pname, pname_format_pwm_ch_dis[param_group], param_index);
-		param_h = param_find(pname);
-
-		if (param_h != PARAM_INVALID) {
-			int32_t pval = 0;
-			param_get(param_h, &pval);
-
-			if (pval != -1) {
-				_mixing_output.disarmedValue(i) = pval;
-
-			} else {
-				_mixing_output.disarmedValue(i) = default_pwm_dis;
-			}
-
-		} else {
-			PX4_DEBUG("PARAM_INVALID: %s", pname);
-		}
-
-		sprintf(pname, pname_format_pwm_ch_rev[param_group], param_index);
-		param_h = param_find(pname);
-
-		if (param_h != PARAM_INVALID) {
-			uint16_t &reverse_pwm_mask = _mixing_output.reverseOutputMask();
-			int32_t pval = 0;
-			param_get(param_h, &pval);
-			reverse_pwm_mask &= (0xfffe << i);  // clear this bit
-			reverse_pwm_mask |= (((uint16_t)(pval != 0)) << i); // set to new val
-
-		} else {
-			PX4_DEBUG("PARAM_INVALID: %s", pname);
+		}else{
+			_mixing_output.maxValue(i)=main_max;
+			_mixing_output.minValue(i)=main_min;
+			_mixing_output.failsafeValue(i)=main_min;
+			_mixing_output.disarmedValue(i)=main_dis;
+			reverse_pwm_mask|= (getParamWithSprintf("PWM_MAIN_REV%d",param_index)?1:0)<<i;
 		}
 	}
+#undef SET_VAL_WITH_DEFAULT_VAL
+
+	_targetFreq=getParam("PWM_MAIN_RATE");
+	_auxFreq=getParam("PWM_AUX_RATE");
 
 	if (_mixing_output.mixers()) { // only update trims if mixer loaded
 		updatePWMParamTrim();
 	}
 }
+
+
+
 
 void FPGA_I2C_PWM_Wrapper::updatePWMParamTrim()
 {
@@ -390,20 +328,18 @@ void FPGA_I2C_PWM_Wrapper::Run()
 
 	switch (_state) {
 	case STATE::INIT:
-		//fpga_i2c_pwm->initReg();
+		fpga_i2c_pwm->initRegs();
 		updatePWMParams();  // target frequency fetched, immediately apply it
-
-		if (_targetFreq > 0.0f) {
-			if (fpga_i2c_pwm->setFreq(_targetFreq) != PX4_OK) {
-				PX4_ERR("failed to set pwm frequency to %.2f, fall back to 50Hz", (double)_targetFreq);
-			}
-
-			_targetFreq = -1.0f;
-
-		} else {
-			// should not happen
-			PX4_ERR("INIT failed: invalid initial frequency settings");
+		if (fpga_i2c_pwm->setFreq(0,_targetFreq) != PX4_OK) {
+			PX4_ERR("failed to set main pwm frequency to %.2f", (double)_targetFreq);
 		}
+
+		if (fpga_i2c_pwm->setFreq(1,_auxFreq) != PX4_OK) {
+			PX4_ERR("failed to set aux pwm frequency to %.2f", (double)_auxFreq);
+		}
+
+		assert(FPAG_I2C_PWM_SUBPWM_NUM==2);
+		fpga_i2c_pwm->setEXTPWM(&_aux_out_channels);
 
 		_state = STATE::RUNNING;
 
@@ -421,23 +357,18 @@ void FPGA_I2C_PWM_Wrapper::Run()
 
 			// update parameters from storage
 			updateParams();
+			if (fpga_i2c_pwm->setFreq(0,_targetFreq) != PX4_OK) {
+				PX4_ERR("failed to set main pwm frequency to %.2f", (double)_targetFreq);
+			}
+
+			if (fpga_i2c_pwm->setFreq(1,_auxFreq) != PX4_OK) {
+				PX4_ERR("failed to set aux pwm frequency to %.2f", (double)_auxFreq);
+			}
+			assert(FPAG_I2C_PWM_SUBPWM_NUM==2);
+			fpga_i2c_pwm->setEXTPWM(&_aux_out_channels);
 		}
 
 		_mixing_output.updateSubscriptions(false);
-
-		if (_targetFreq > 0.0f) { // check if frequency should be changed
-			ScheduleClear();
-			fpga_i2c_pwm->disableAllOutput();
-
-			if (fpga_i2c_pwm->setFreq(_targetFreq) != PX4_OK) {
-				PX4_ERR("failed to set pwm frequency, fall back to 50Hz");
-				fpga_i2c_pwm->setFreq(50.0f);	// this should not fail
-			}
-
-			ScheduleOnInterval(1000000 / 400, 1000000 / 400);
-			//fpga_i2c_pwm->enableOutput()
-		}
-
 		break;
 	}
 
@@ -495,7 +426,7 @@ int FPGA_I2C_PWM_Wrapper::ioctl(cdev::file_t *filep, int cmd, unsigned long arg)
 int FPGA_I2C_PWM_Wrapper::print_usage(const char *reason)
 {
 	if (reason) {
-		PX4_WARN("%s\n", reason);
+		PX4_DEBUG("%s\n", reason);
 	}
 
 	PRINT_MODULE_DESCRIPTION(
@@ -519,10 +450,10 @@ The number X can be acquired by executing
 `pca9685_pwm_out status` when this driver is running.
 )DESCR_STR");
 
-    PRINT_MODULE_USAGE_NAME("fpga_i2c_pwm_out", "driver");
-    PRINT_MODULE_USAGE_COMMAND_DESCR("start", "Start the task");
-    PRINT_MODULE_USAGE_PARAM_INT('a',32,0,255,"device address on this bus",true);
-	PRINT_MODULE_USAGE_PARAM_INT('b',0,0,255,"bus that pca9685 is connected to",true);
+    	PRINT_MODULE_USAGE_NAME("fpga_i2c_pwm_out", "driver");
+    	PRINT_MODULE_USAGE_COMMAND_DESCR("start", "Start the task");
+        PRINT_MODULE_USAGE_PARAM_INT('a',FPGA_I2C_PWM_DEFAULT_ADDRESS,0,255,"device address on this bus",true);
+    	PRINT_MODULE_USAGE_PARAM_INT('b',FPGA_I2C_PWM_DEFAULT_IICBUS,0,255,"bus that fpag_i2c_pwm is connected to",true);
 	PRINT_MODULE_USAGE_PARAM_INT('r',400,50,400,"schedule rate limit",true);
     PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
 
@@ -563,7 +494,7 @@ int FPGA_I2C_PWM_Wrapper::task_spawn(int argc, char **argv) {
 				iicbus = atoi(myoptarg);
 				break;
 			case '?':
-				PX4_WARN("Unsupported args");
+				PX4_DEBUG("Unsupported args");
 				return PX4_ERROR;
 
 			default:

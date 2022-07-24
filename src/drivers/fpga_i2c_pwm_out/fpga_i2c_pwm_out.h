@@ -41,12 +41,13 @@ namespace fpga_i2c_pwm
 
 #define FPGA_I2C_REG_PERIOD 0x00
 #define FPGA_I2C_REG_CH0_CCR 0x01
-#define FPGA_FREQ  50000000  // default 50Mhz
+#define FPAG_OSC_FREQ	238996176
+#define FPGA_FREQ  FPAG_OSC_FREQ/6
 #define FPGA_DEFAULT_PERIOD	2000
 #define PWM_DEFAULT_FREQUENCY FPGA_FREQ/FPGA_DEFAULT_PERIOD
 
-#define FPGA_PWM_OUTPUT_MAX_CHANNELS 4
-
+#define FPGA_PWM_OUTPUT_MAX_CHANNELS 8
+#define FPAG_I2C_PWM_SUBPWM_NUM 2
 
 class FPGA_I2C_PWM : public device::I2C
 {
@@ -62,11 +63,12 @@ public:
 	 */
 	int updatePWM(const uint16_t *outputs, unsigned num_outputs);
 
-	int setFreq(float freq);
+	int setFreq(uint8_t sub_pwm_n,float freq);
+	void setEXTPWM(uint16_t * bitmasks);
 
 	~FPGA_I2C_PWM() override = default;
 
-	void enableOutput(uint8_t channel_mark);
+	void initRegs();
 
 	inline float getFrequency() {return _freq;}
 
@@ -84,7 +86,9 @@ protected:
 	int probe() override;
 
 	float _freq = PWM_DEFAULT_FREQUENCY;
+	float _freq_ext = PWM_DEFAULT_FREQUENCY;
 	uint16_t _period=FPGA_DEFAULT_PERIOD;
+	uint16_t _period_ext= FPGA_DEFAULT_PERIOD;
 
 	/**
 	 * set PWM value for a channel[0,15].
@@ -95,7 +99,9 @@ protected:
 	/*
 	 * set clock divider
 	 */
-	void setPeriod(uint16_t value);
+	void setPeriod(uint8_t sub_pwm_n,uint16_t value);
+
+	int writeReg(uint8_t reg_addr,uint16_t val);
 
 private:
 

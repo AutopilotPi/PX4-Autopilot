@@ -43,6 +43,39 @@ FPGA_I2C_PWM::FPGA_I2C_PWM(int bus, int addr):
 
 }
 
+int FPGA_I2C_PWM::writeReg(uint8_t reg_addr,uint16_t val){
+	uint8_t buf[3]={reg_addr,(uint8_t)(val>>8),(uint8_t)(val&0xff)};
+	return transfer(buf,3,nullptr,0);
+}
+
+void FPGA_I2C_PWM::setEXTPWM(uint16_t * bitmasks){
+	uint16_t config=0;
+	uint8_t buf[3] = {0x80};
+	transfer(buf, 1,buf+1,2);  // read config
+	config=buf[1]<<8 | buf[2];
+	PX4_WARN("old config:%d ",config);
+
+	PX4_WARN("bit mask is :0x%x",bitmasks[0]);
+
+	for(int i=0;i<FPAG_I2C_PWM_SUBPWM_NUM-1;++i){
+		uint16_t bitmask=bitmasks[i];
+		uint16_t channel_map=0;
+
+		if(bitmask!=0){
+			config |= 1<<(14-i);
+		}
+		for(int j=0;j<FPGA_PWM_OUTPUT_MAX_CHANNELS;++j){
+			if(bitmask & (1<<j) ){
+				channel_map |= (i+1) << j*2;    // i+1 is sub_pwm_n, j is chn
+			}
+		}
+		writeReg(0x20+i,channel_map);
+	}
+
+	writeReg(0x80,config);
+}
+
+
 int FPGA_I2C_PWM::Stop()
 {
 	disableAllOutput();
@@ -50,8 +83,8 @@ int FPGA_I2C_PWM::Stop()
 }
 
 void FPGA_I2C_PWM::status(){
-	PX4_INFO("period:%d  %d  freq:%d",getPeriod(),_period,(int)_freq);
-	for(int i=0; i<4;++i){
+	PX4_INFO("main period:%d  %d  main_freq:%d",getPeriod(),_period,(int)_freq);
+	for(int i=0; i<FPGA_PWM_OUTPUT_MAX_CHANNELS;++i){
 		PX4_INFO("CCR%d:%d",i,getCCR(i));
 	}
 
@@ -69,32 +102,36 @@ int FPGA_I2C_PWM::updatePWM(const uint16_t *outputs, unsigned num_outputs)
 	memcpy(out, outputs, sizeof(uint16_t) * num_outputs);
 
 	for (unsigned i = 0; i < num_outputs; ++i) {
-		out[i] = (uint16_t)roundl((out[i]-1000)*_period /1000.0f); // convert us to 12 bit resolution
+		//out[i] = (uint16_t)roundl((out[i]-1000)*_period /1000.0f); // convert us to 12 bit resolution
+		out[i] = out[i]*_freq*_period/1000/1000;
 		setPWM(i, out[i]);
 	}
 
 	return 0;
 }
 
-int FPGA_I2C_PWM::setFreq(float freq)
+int FPGA_I2C_PWM::setFreq(uint8_t sub_pwm_n,float freq)
 {
-	uint32_t period_temp = floorl((float)FPGA_FREQ / freq);
+	uint32_t period_temp = floorl((float)FPGA_FREQ/2/ freq);
 
 	if (period_temp > 0xFFFF) {
 		PX4_DEBUG("frequency is too low");
 		return -EINVAL;
 	}
 
-	setPeriod(period_temp);
-	_freq=freq;
-
+	setPeriod(sub_pwm_n,period_temp);
+	if(sub_pwm_n){
+		_freq_ext=freq;
+	}else{
+		_freq=freq;
+	}
 	return PX4_OK;
 
 }
 
-void FPGA_I2C_PWM::enableOutput(uint8_t channel_mark)
+void FPGA_I2C_PWM::initRegs()
 {
-	;
+	writeReg(0x80,0x01); // set predivider = 2
 }
 
 int FPGA_I2C_PWM::probe()
@@ -104,13 +141,9 @@ int FPGA_I2C_PWM::probe()
 
 void FPGA_I2C_PWM::setPWM(uint8_t channel, const uint16_t &value)
 {
-	uint8_t buf[3] = {};
-	buf[0]=	FPGA_I2C_REG_CH0_CCR+channel;
-	buf[1] = value>>8;
-	buf[2] = value&0xFF;
+	int ret;
 
-	int ret = transfer(buf, 3, nullptr, 0);
-
+	ret = writeReg(FPGA_I2C_REG_CH0_CCR+channel,value);
 	if (OK != ret) {
 		PX4_DEBUG("setPWM: i2c::transfer returned %d", ret);
 	}
@@ -119,23 +152,23 @@ void FPGA_I2C_PWM::setPWM(uint8_t channel, const uint16_t &value)
 void FPGA_I2C_PWM::disableAllOutput()
 {
 	uint16_t temp=0;
-	for(int i=0;i<4;++i){
+	for(int i=0;i<FPGA_PWM_OUTPUT_MAX_CHANNELS;++i){
 		setPWM(i,temp);
 	}
 }
 
-void FPGA_I2C_PWM::setPeriod(uint16_t value)
+void FPGA_I2C_PWM::setPeriod(uint8_t sub_pwm_n,uint16_t value)
 {
-	uint8_t buf[3] = {0x00};
-	buf[1]=value>>8;
-	buf[2]=value&0xFF;
-	int ret = transfer(buf, 3, nullptr, 0);
+	int ret=0;
+	uint16_t * period_ptr=sub_pwm_n?&_period_ext:&_period;
+	uint8_t reg= sub_pwm_n?0x40:0x00;
 
+	ret=writeReg(reg,value);
 	if (OK != ret) {
 		PX4_ERR("i2c::transfer returned %d", ret);
 		return;
 	}
-	_period=value;
+	*period_ptr=value;
 }
 
 
