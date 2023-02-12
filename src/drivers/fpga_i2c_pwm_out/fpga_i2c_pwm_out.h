@@ -89,6 +89,7 @@ protected:
 	float _freq_ext = PWM_DEFAULT_FREQUENCY;
 	uint16_t _period=FPGA_DEFAULT_PERIOD;
 	uint16_t _period_ext= FPGA_DEFAULT_PERIOD;
+	uint16_t _channel_map=0;
 
 	/**
 	 * set PWM value for a channel[0,15].

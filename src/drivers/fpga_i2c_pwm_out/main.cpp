@@ -206,11 +206,6 @@ void FPGA_I2C_PWM_Wrapper::updatePWMParams()
 		return;
 	}
 
-	int32_t main_max,aux_max,aux_min,
-		main_min,aux_dis,
-		main_dis;
-
-
 	int32_t aux_out_temp=0;
 
 
@@ -220,15 +215,6 @@ void FPGA_I2C_PWM_Wrapper::updatePWMParams()
 		int32_t temp = aux_out_temp % 10;
 		_aux_out_channels |= 1<<(temp-1);
 	}
-#define SET_VAL_WITH_DEFAULT_VAL(val,target,d_val)       val = ((uint32_t)target!=0xdeadbeef)?target:d_val
-
-	SET_VAL_WITH_DEFAULT_VAL(main_max, getParam("PWM_MAIN_MAX"),PWM_DEFAULT_MAX);
-	SET_VAL_WITH_DEFAULT_VAL(main_min, getParam("PWM_MAIN_MIN"),PWM_DEFAULT_MIN);
-	SET_VAL_WITH_DEFAULT_VAL(main_dis, getParam("PWM_MAIN_DISARM"),PWM_MOTOR_OFF);
-
-	SET_VAL_WITH_DEFAULT_VAL(aux_max, getParam("PWM_AUX_MAX"),PWM_DEFAULT_MAX);
-	SET_VAL_WITH_DEFAULT_VAL(aux_min, getParam("PWM_AUX_MIN"),PWM_DEFAULT_MIN);
-	SET_VAL_WITH_DEFAULT_VAL(aux_dis, getParam("PWM_AUX_DISARM"),PWM_MOTOR_OFF);
 
 	// notice: use the val of PWM_MAIN as the default value, which is different from PX4 document.
 
@@ -237,19 +223,19 @@ void FPGA_I2C_PWM_Wrapper::updatePWMParams()
 		uint8_t param_index=i+1;  // param_index start from 1
 		reverse_pwm_mask&= ~(1<<i);
 		if( _aux_out_channels  & (1<<i) ){
-			_mixing_output.maxValue(i)=aux_max;
-			_mixing_output.minValue(i)=aux_min;
-			_mixing_output.failsafeValue(i)=aux_min;
-			_mixing_output.disarmedValue(i)=aux_dis;
+			_mixing_output.maxValue(i)=getParamWithSprintf("PWM_AUX_MAX%d",param_index);
+			_mixing_output.minValue(i)=getParamWithSprintf("PWM_AUX_MIN%d",param_index);
+			_mixing_output.failsafeValue(i)=getParamWithSprintf("PWM_AUX_FAIL%d",param_index);
+			_mixing_output.disarmedValue(i)=getParamWithSprintf("PWM_AUX_DIS%d",param_index);
 			//SET_VAL_WITH_DEFAULT_VAL(_mixing_output.failsafeValue(i),getParamWithSprintf("PWM_AUX_FAIL%d",param_index),default_pwm_fail);
 			//SET_VAL_WITH_DEFAULT_VAL(_mixing_output.disarmedValue(i),getParamWithSprintf("PWM_AUX_DIS%d",param_index),default_pwm_dis);
 			reverse_pwm_mask|= (getParamWithSprintf("PWM_AUX_REV%d",param_index)?1:0)<<i;
 
 		}else{
-			_mixing_output.maxValue(i)=main_max;
-			_mixing_output.minValue(i)=main_min;
-			_mixing_output.failsafeValue(i)=main_min;
-			_mixing_output.disarmedValue(i)=main_dis;
+			_mixing_output.maxValue(i)=getParamWithSprintf("PWM_MAIN_MAX%d",param_index);
+			_mixing_output.minValue(i)=getParamWithSprintf("PWM_MAIN_MIN%d",param_index);
+			_mixing_output.failsafeValue(i)=getParamWithSprintf("PWM_MAIN_FAIL%d",param_index);
+			_mixing_output.disarmedValue(i)=getParamWithSprintf("PWM_MAIN_DIS%d",param_index);
 			reverse_pwm_mask|= (getParamWithSprintf("PWM_MAIN_REV%d",param_index)?1:0)<<i;
 		}
 	}

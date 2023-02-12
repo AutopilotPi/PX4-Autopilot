@@ -56,22 +56,20 @@ void FPGA_I2C_PWM::setEXTPWM(uint16_t * bitmasks){
 	PX4_WARN("old config:%d ",config);
 
 	PX4_WARN("bit mask is :0x%x",bitmasks[0]);
-
 	for(int i=0;i<FPAG_I2C_PWM_SUBPWM_NUM-1;++i){
 		uint16_t bitmask=bitmasks[i];
-		uint16_t channel_map=0;
 
 		if(bitmask!=0){
 			config |= 1<<(14-i);
 		}
 		for(int j=0;j<FPGA_PWM_OUTPUT_MAX_CHANNELS;++j){
 			if(bitmask & (1<<j) ){
-				channel_map |= (i+1) << j*2;    // i+1 is sub_pwm_n, j is chn
+				_channel_map |= (i+1) << j*2;    // i+1 is sub_pwm_n, j is chn
 			}
 		}
-		writeReg(0x20+i,channel_map);
-	}
 
+	}
+	writeReg(0x20,_channel_map);
 	writeReg(0x80,config);
 }
 
@@ -95,15 +93,27 @@ int FPGA_I2C_PWM::updatePWM(const uint16_t *outputs, unsigned num_outputs)
 {
 	if (num_outputs > FPGA_PWM_OUTPUT_MAX_CHANNELS) {
 		num_outputs = FPGA_PWM_OUTPUT_MAX_CHANNELS;
-		PX4_DEBUG("FPGA_I2C_PWM can only drive up to 16 channels");
+		PX4_DEBUG("FPGA_I2C_PWM can only drive up to 8 channels");
 	}
 
-	uint16_t out[FPGA_PWM_OUTPUT_MAX_CHANNELS];
-	memcpy(out, outputs, sizeof(uint16_t) * num_outputs);
+	uint16_t out[FPGA_PWM_OUTPUT_MAX_CHANNELS]={0};
+	//memcpy(out, outputs, sizeof(uint16_t) * num_outputs);
 
 	for (unsigned i = 0; i < num_outputs; ++i) {
-		//out[i] = (uint16_t)roundl((out[i]-1000)*_period /1000.0f); // convert us to 12 bit resolution
-		out[i] = out[i]*_freq*_period/1000/1000;
+		bool is_aux_chn = _channel_map & ( 1 << i*2 );
+		float temp_freq= is_aux_chn?_freq_ext:_freq;
+		uint16_t temp_period = is_aux_chn?_period_ext:_period;
+
+		if(temp_freq>500){
+			out[i] = outputs[i]*temp_period/10000;
+			/*
+				if freq > 500, then unit of output(us) make no sense,
+				so in this situation, we treat it as Duty Mode.
+				set PWM_XXX_MAX${i} to 10000, and PWM_XXX_MIN${i} to 0
+			*/
+		}else{
+			out[i] = outputs[i]*temp_freq*temp_period/1000/1000;
+		}
 		setPWM(i, out[i]);
 	}
 
