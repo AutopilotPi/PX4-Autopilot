@@ -179,7 +179,7 @@ endif
 # --------------------------------------------------------------------
 # describe how to build a cmake config
 define cmake-build
-	$(eval CMAKE_ARGS += -DCONFIG=$(1))
+	$(eval CMAKE_ARGS += -DCONFIG=$(1) -DCMAKE_EXPORT_COMPILE_COMMANDS=1)
 	@$(eval BUILD_DIR = "$(SRC_DIR)/build/$(1)")
 	@# check if the desired cmake configuration matches the cache then CMAKE_CACHE_CHECK stays empty
 	@$(call cmake-cache-check)

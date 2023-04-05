@@ -31,12 +31,14 @@
 #
 ############################################################################
 px4_add_module(
-	MODULE drivers__fpga_i2c_pwm_out
-	MAIN fpga_i2c_pwm_out
+	MODULE drivers__fpga_spi_pwm_out
+	MAIN fpga_pwm_out
 	COMPILE_FLAGS
 	SRCS
-		main.cpp
-		fpga_i2c_pwm_out.cpp
+		#main.cpp
+		#fpga_i2c_pwm_out.cpp
+		fpga_spi_pwm_out.cpp
+		fpga_pwm_main.cpp
 	MODULE_CONFIG
 		module.yaml
 	DEPENDS

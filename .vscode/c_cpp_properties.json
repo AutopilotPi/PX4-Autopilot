@@ -9,7 +9,8 @@
             "macFrameworkPath": [],
             "configurationProvider": "ms-vscode.cmake-tools",
             "cppStandard": "c++14",
-            "cStandard": "c11"
+            "cStandard": "c11",
+            "compileCommands": "${workspaceFolder}/build/autopilotpi_v3s_default/compile_commands.json"
         }
     ],
     "version": 4

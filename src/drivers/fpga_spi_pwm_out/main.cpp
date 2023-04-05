@@ -32,8 +32,8 @@
  ****************************************************************************/
 
 /**
- * @file fpga_i2c_pwm/main.cpp
- * A cross-platform driver and wrapper for fpga_i2c_pwm modules.
+ * @file fpga_pwm/main.cpp
+ * A cross-platform driver and wrapper for fpga_pwm modules.
  * Designed to support all control-groups by binding to correct mixer files
  * @author ncerzzk <huangcmzzk@gmail.com>
  */
@@ -47,22 +47,22 @@
 #include <drivers/drv_hrt.h>
 #include <px4_platform_common/getopt.h>
 
-#include "fpga_i2c_pwm_out.h"
+#include "fpga_spi_pwm_out.h"
 #include <stdarg.h>
 
-#define FPGA_I2C_PWM_DEFAULT_IICBUS  0
-#define FPGA_I2C_PWM_DEFAULT_ADDRESS (0x20)
+#define FPGA_PWM_DEFAULT_IICBUS  0
+#define FPGA_PWM_DEFAULT_ADDRESS (0x20)
 
 
-using namespace fpga_i2c_pwm;
+using namespace fpga_spi_pwm;
 using namespace time_literals;
 
-class FPGA_I2C_PWM_Wrapper : public cdev::CDev, public ModuleBase<FPGA_I2C_PWM_Wrapper>, public OutputModuleInterface
+class FPGA_PWM_Wrapper : public cdev::CDev, public ModuleBase<FPGA_PWM_Wrapper>, public OutputModuleInterface
 {
 public:
 
-	FPGA_I2C_PWM_Wrapper();
-	~FPGA_I2C_PWM_Wrapper() override ;
+	FPGA_PWM_Wrapper();
+	~FPGA_PWM_Wrapper() override ;
 
 	int init() override;
 
@@ -80,8 +80,8 @@ public:
 	bool updateOutputs(bool stop_motors, uint16_t *outputs, unsigned num_outputs,
 			   unsigned num_control_groups_updated) override;
 
-	FPGA_I2C_PWM_Wrapper(const FPGA_I2C_PWM_Wrapper &) = delete;
-	FPGA_I2C_PWM_Wrapper operator=(const FPGA_I2C_PWM_Wrapper &) = delete;
+	FPGA_PWM_Wrapper(const FPGA_PWM_Wrapper &) = delete;
+	FPGA_PWM_Wrapper operator=(const FPGA_PWM_Wrapper &) = delete;
 
 	int print_status() override;
 
@@ -114,14 +114,14 @@ protected:
 
 	int _schd_rate_limit = 400;
 
-	FPGA_I2C_PWM *fpga_i2c_pwm = nullptr; // driver handle.
+	FPGA_SPI_PWM *fpga_pwm = nullptr; // driver handle.
 
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
-	MixingOutput _mixing_output{"FPGA_I2C_PWM", FPGA_PWM_OUTPUT_MAX_CHANNELS, *this, MixingOutput::SchedulingPolicy::Disabled, true};
+	MixingOutput _mixing_output{"FPGA_PWM", FPGA_PWM_OUTPUT_MAX_CHANNELS, *this, MixingOutput::SchedulingPolicy::Disabled, true};
 };
 
-FPGA_I2C_PWM_Wrapper::FPGA_I2C_PWM_Wrapper() :
+FPGA_PWM_Wrapper::FPGA_PWM_Wrapper() :
 	CDev(PWM_OUTPUT_BASE_DEVICE_PATH),
 	OutputModuleInterface(MODULE_NAME, px4::wq_configurations::hp_default),
 	_cycle_perf(perf_alloc(PC_ELAPSED, MODULE_NAME": cycle"))
@@ -132,19 +132,19 @@ FPGA_I2C_PWM_Wrapper::FPGA_I2C_PWM_Wrapper() :
 	}
 }
 
-FPGA_I2C_PWM_Wrapper::~FPGA_I2C_PWM_Wrapper()
+FPGA_PWM_Wrapper::~FPGA_PWM_Wrapper()
 {
-	if (fpga_i2c_pwm != nullptr) { // normally this should not be called.
-		PX4_DEBUG("Destruction of FPGA_I2C_PWM_Wrapper without pwmDevice unloaded!");
-		fpga_i2c_pwm->Stop(); // force stop
-		delete fpga_i2c_pwm;
-		fpga_i2c_pwm = nullptr;
+	if (fpga_pwm != nullptr) { // normally this should not be called.
+		PX4_DEBUG("Destruction of FPGA_PWM_Wrapper without pwmDevice unloaded!");
+		fpga_pwm->Stop(); // force stop
+		delete fpga_pwm;
+		fpga_pwm = nullptr;
 	}
 
 	perf_free(_cycle_perf);
 }
 
-int FPGA_I2C_PWM_Wrapper::init()
+int FPGA_PWM_Wrapper::init()
 {
 	int ret = CDev::init();
 
@@ -152,24 +152,18 @@ int FPGA_I2C_PWM_Wrapper::init()
 		return ret;
 	}
 
-	ret = fpga_i2c_pwm->init();
-
-	if (ret != PX4_OK) {
-		return ret;
-	}
-
 	_class_instance = register_class_devname(PWM_OUTPUT_BASE_DEVICE_PATH);
 
-	this->ChangeWorkQueue(px4::device_bus_to_wq(fpga_i2c_pwm->get_device_id()));
+	this->ChangeWorkQueue(px4::device_bus_to_wq(fpga_pwm->get_device_id()));
 
-	PX4_INFO("running on I2C bus %d address 0x%.2x", fpga_i2c_pwm->get_device_bus(), fpga_i2c_pwm->get_device_address());
+	PX4_INFO("running on I2C bus %d address 0x%.2x", fpga_pwm->get_device_bus(), fpga_pwm->get_device_address());
 
 	ScheduleNow();
 
 	return PX4_OK;
 }
 
-void FPGA_I2C_PWM_Wrapper::updateParams()
+void FPGA_PWM_Wrapper::updateParams()
 {
 	updatePWMParams();
 	ModuleParams::updateParams();
@@ -200,7 +194,7 @@ int32_t getParamWithSprintf(const char * format, int num){
 	return getParam(buf);
 }
 
-void FPGA_I2C_PWM_Wrapper::updatePWMParams()
+void FPGA_PWM_Wrapper::updatePWMParams()
 {
 	if (_mixing_output.useDynamicMixing()) {
 		return;
@@ -227,8 +221,6 @@ void FPGA_I2C_PWM_Wrapper::updatePWMParams()
 			_mixing_output.minValue(i)=getParamWithSprintf("PWM_AUX_MIN%d",param_index);
 			_mixing_output.failsafeValue(i)=getParamWithSprintf("PWM_AUX_FAIL%d",param_index);
 			_mixing_output.disarmedValue(i)=getParamWithSprintf("PWM_AUX_DIS%d",param_index);
-			//SET_VAL_WITH_DEFAULT_VAL(_mixing_output.failsafeValue(i),getParamWithSprintf("PWM_AUX_FAIL%d",param_index),default_pwm_fail);
-			//SET_VAL_WITH_DEFAULT_VAL(_mixing_output.disarmedValue(i),getParamWithSprintf("PWM_AUX_DIS%d",param_index),default_pwm_dis);
 			reverse_pwm_mask|= (getParamWithSprintf("PWM_AUX_REV%d",param_index)?1:0)<<i;
 
 		}else{
@@ -239,7 +231,6 @@ void FPGA_I2C_PWM_Wrapper::updatePWMParams()
 			reverse_pwm_mask|= (getParamWithSprintf("PWM_MAIN_REV%d",param_index)?1:0)<<i;
 		}
 	}
-#undef SET_VAL_WITH_DEFAULT_VAL
 
 	_targetFreq=getParam("PWM_MAIN_RATE");
 	_auxFreq=getParam("PWM_AUX_RATE");
@@ -252,7 +243,7 @@ void FPGA_I2C_PWM_Wrapper::updatePWMParams()
 
 
 
-void FPGA_I2C_PWM_Wrapper::updatePWMParamTrim()
+void FPGA_PWM_Wrapper::updatePWMParamTrim()
 {
 	const char *pname_format_pwm_ch_trim[2] = {"PWM_MAIN_TRIM%d", "PWM_AUX_TRIM%d"};
 
@@ -289,43 +280,44 @@ void FPGA_I2C_PWM_Wrapper::updatePWMParamTrim()
 	PX4_DEBUG("set %d trims", n_out);
 }
 
-bool FPGA_I2C_PWM_Wrapper::updateOutputs(bool stop_motors, uint16_t *outputs, unsigned num_outputs,
+bool FPGA_PWM_Wrapper::updateOutputs(bool stop_motors, uint16_t *outputs, unsigned num_outputs,
 		unsigned num_control_groups_updated)
 {
-	return fpga_i2c_pwm->updatePWM(outputs, num_outputs) == 0 ? true : false;
+	if(!fpga_pwm){
+		return true;
+	}
+	return fpga_pwm->updatePWM(outputs, num_outputs) == 0 ? true : false;
 }
 
-void FPGA_I2C_PWM_Wrapper::Run()
+void FPGA_PWM_Wrapper::Run()
 {
 	if (should_exit()) {
 		ScheduleClear();
 		_mixing_output.unregister();
 		unregister_class_devname(PWM_OUTPUT_BASE_DEVICE_PATH, _class_instance);
 
-		fpga_i2c_pwm->Stop();
-		delete fpga_i2c_pwm;
-		fpga_i2c_pwm = nullptr;
+		fpga_pwm->Stop();
+		delete fpga_pwm;
+		fpga_pwm = nullptr;
 
 		exit_and_cleanup();
 		return;
 	}
 
 	perf_begin(_cycle_perf);
-
 	switch (_state) {
 	case STATE::INIT:
-		fpga_i2c_pwm->initRegs();
 		updatePWMParams();  // target frequency fetched, immediately apply it
-		if (fpga_i2c_pwm->setFreq(0,_targetFreq) != PX4_OK) {
+		if (fpga_pwm->setFreq(0,_targetFreq) != PX4_OK) {
 			PX4_ERR("failed to set main pwm frequency to %.2f", (double)_targetFreq);
 		}
 
-		if (fpga_i2c_pwm->setFreq(1,_auxFreq) != PX4_OK) {
+		if (fpga_pwm->setFreq(1,_auxFreq) != PX4_OK) {
 			PX4_ERR("failed to set aux pwm frequency to %.2f", (double)_auxFreq);
 		}
 
 		assert(FPAG_I2C_PWM_SUBPWM_NUM==2);
-		fpga_i2c_pwm->setEXTPWM(&_aux_out_channels);
+		fpga_pwm->setEXTPWM(&_aux_out_channels);
 
 		_state = STATE::RUNNING;
 
@@ -343,25 +335,24 @@ void FPGA_I2C_PWM_Wrapper::Run()
 
 			// update parameters from storage
 			updateParams();
-			if (fpga_i2c_pwm->setFreq(0,_targetFreq) != PX4_OK) {
+			if (fpga_pwm->setFreq(0,_targetFreq) != PX4_OK) {
 				PX4_ERR("failed to set main pwm frequency to %.2f", (double)_targetFreq);
 			}
 
-			if (fpga_i2c_pwm->setFreq(1,_auxFreq) != PX4_OK) {
+			if (fpga_pwm->setFreq(1,_auxFreq) != PX4_OK) {
 				PX4_ERR("failed to set aux pwm frequency to %.2f", (double)_auxFreq);
 			}
 			assert(FPAG_I2C_PWM_SUBPWM_NUM==2);
-			fpga_i2c_pwm->setEXTPWM(&_aux_out_channels);
+			fpga_pwm->setEXTPWM(&_aux_out_channels);
 		}
-
+		fpga_pwm->updatePWMTrue();
 		_mixing_output.updateSubscriptions(false);
 		break;
 	}
-
 	perf_end(_cycle_perf);
 }
 
-int FPGA_I2C_PWM_Wrapper::ioctl(cdev::file_t *filep, int cmd, unsigned long arg)
+int FPGA_PWM_Wrapper::ioctl(cdev::file_t *filep, int cmd, unsigned long arg)
 {
 	int ret = OK;
 
@@ -376,23 +367,12 @@ int FPGA_I2C_PWM_Wrapper::ioctl(cdev::file_t *filep, int cmd, unsigned long arg)
 	case MIXERIOCLOADBUF: {
 			const char *buf = (const char *)arg;
 			unsigned buflen = strlen(buf);
-
 			ret = _mixing_output.loadMixer(buf, buflen);
-
 			break;
 		}
 
 	case PWM_SERVO_GET_COUNT:
 		*(unsigned *)arg = FPGA_PWM_OUTPUT_MAX_CHANNELS;
-
-		break;
-
-	case PWM_SERVO_SET_ARM_OK:
-	case PWM_SERVO_SET_FORCE_SAFETY_OFF:
-	case PWM_SERVO_CLEAR_ARM_OK:
-	case PWM_SERVO_SET_FORCE_SAFETY_ON:
-	case PWM_SERVO_ARM:
-	case PWM_SERVO_DISARM:
 		break;
 
 	default:
@@ -409,7 +389,7 @@ int FPGA_I2C_PWM_Wrapper::ioctl(cdev::file_t *filep, int cmd, unsigned long arg)
 	return ret;
 }
 
-int FPGA_I2C_PWM_Wrapper::print_usage(const char *reason)
+int FPGA_PWM_Wrapper::print_usage(const char *reason)
 {
 	if (reason) {
 		PX4_DEBUG("%s\n", reason);
@@ -436,48 +416,44 @@ The number X can be acquired by executing
 `pca9685_pwm_out status` when this driver is running.
 )DESCR_STR");
 
-    	PRINT_MODULE_USAGE_NAME("fpga_i2c_pwm_out", "driver");
+    	PRINT_MODULE_USAGE_NAME("fpga_pwm_out", "driver");
     	PRINT_MODULE_USAGE_COMMAND_DESCR("start", "Start the task");
-        PRINT_MODULE_USAGE_PARAM_INT('a',FPGA_I2C_PWM_DEFAULT_ADDRESS,0,255,"device address on this bus",true);
-    	PRINT_MODULE_USAGE_PARAM_INT('b',FPGA_I2C_PWM_DEFAULT_IICBUS,0,255,"bus that fpag_i2c_pwm is connected to",true);
+        PRINT_MODULE_USAGE_PARAM_INT('a',FPGA_PWM_DEFAULT_ADDRESS,0,255,"device address on this bus",true);
+    	PRINT_MODULE_USAGE_PARAM_INT('b',FPGA_PWM_DEFAULT_IICBUS,0,255,"bus that fpag_i2c_pwm is connected to",true);
 	PRINT_MODULE_USAGE_PARAM_INT('r',400,50,400,"schedule rate limit",true);
     PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
 
     return 0;
 }
 
-int FPGA_I2C_PWM_Wrapper::print_status() {
+int FPGA_PWM_Wrapper::print_status() {
     int ret =  ModuleBase::print_status();
-    PX4_INFO("fpga_i2c_pwm_out @I2C Bus %d, address 0x%.2x, true frequency %.5f",
-            fpga_i2c_pwm->get_device_bus(),
-            fpga_i2c_pwm->get_device_address(),
-             (double)(fpga_i2c_pwm->getFrequency()));
     PX4_INFO("CDev path: %s%d", PWM_OUTPUT_BASE_DEVICE_PATH, this->_class_instance);
-    fpga_i2c_pwm->status();
+    fpga_pwm->status();
 
     return ret;
 }
 
-int FPGA_I2C_PWM_Wrapper::custom_command(int argc, char **argv) { // only for test use
+int FPGA_PWM_Wrapper::custom_command(int argc, char **argv) { // only for test use
     return PX4_OK;
 }
 
-int FPGA_I2C_PWM_Wrapper::task_spawn(int argc, char **argv) {
+int FPGA_PWM_Wrapper::task_spawn(int argc, char **argv) {
 
 	int ch;
-	int address=FPGA_I2C_PWM_DEFAULT_ADDRESS;
-	int iicbus=FPGA_I2C_PWM_DEFAULT_IICBUS;
+	//int address=FPGA_PWM_DEFAULT_ADDRESS;
+	//int iicbus=FPGA_PWM_DEFAULT_IICBUS;
 
 	int myoptind = 1;
 	const char *myoptarg = nullptr;
 	while ((ch = px4_getopt(argc, argv, "a:b:", &myoptind, &myoptarg)) != EOF) {
 		switch (ch) {
 			case 'a':
-				address = atoi(myoptarg);
+				//address = atoi(myoptarg);
 				break;
 
 			case 'b':
-				iicbus = atoi(myoptarg);
+				//iicbus = atoi(myoptarg);
 				break;
 			case '?':
 				PX4_DEBUG("Unsupported args");
@@ -488,31 +464,23 @@ int FPGA_I2C_PWM_Wrapper::task_spawn(int argc, char **argv) {
 		}
 	}
 
-    auto *instance = new FPGA_I2C_PWM_Wrapper();
+
+    auto *instance = new FPGA_PWM_Wrapper();
 
     if (instance) {
         _object.store(instance);
         _task_id = task_id_is_work_queue;
 
-        instance->fpga_i2c_pwm = new FPGA_I2C_PWM(iicbus, address);
-        if(instance->fpga_i2c_pwm==nullptr){
-            PX4_ERR("alloc failed");
-            goto driverInstanceAllocFailed;
-        }
-
         if (instance->init() == PX4_OK) {
             return PX4_OK;
         } else {
             PX4_ERR("driver init failed");
-            delete instance->fpga_i2c_pwm;
-            instance->fpga_i2c_pwm=nullptr;
         }
     } else {
         PX4_ERR("alloc failed");
 	    return PX4_ERROR;
     }
 
-    driverInstanceAllocFailed:
     delete instance;
     _object.store(nullptr);
     _task_id = -1;
@@ -520,7 +488,7 @@ int FPGA_I2C_PWM_Wrapper::task_spawn(int argc, char **argv) {
     return PX4_ERROR;
 }
 
-void FPGA_I2C_PWM_Wrapper::mixerChanged() {
+void FPGA_PWM_Wrapper::mixerChanged() {
     OutputModuleInterface::mixerChanged();
     if (_mixing_output.mixers()) { // only update trims if mixer loaded
         updatePWMParamTrim();
@@ -528,8 +496,8 @@ void FPGA_I2C_PWM_Wrapper::mixerChanged() {
     _mixing_output.updateSubscriptions(false);
 }
 
-extern "C" __EXPORT int fpga_i2c_pwm_out_main(int argc, char *argv[]);
+extern "C" __EXPORT int fpga_pwm_out_main(int argc, char *argv[]);
 
-int fpga_i2c_pwm_out_main(int argc, char *argv[]){
-	return FPGA_I2C_PWM_Wrapper::main(argc, argv);
+int fpga_pwm_out_main(int argc, char *argv[]){
+	return FPGA_PWM_Wrapper::main(argc, argv);
 }

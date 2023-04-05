@@ -1,7 +1,7 @@
 Generic wing mixer
 ===========================
 
-output5 is thrust
+output5 and output1 is thrust
 output8 and output3 is servo
 
 output0
