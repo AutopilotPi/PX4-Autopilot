@@ -29,5 +29,33 @@
                 ]
             }
         },
+        {
+            "name": "(gdb) remote",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${command:cmake.launchTargetPath}",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${command:cmake.buildDirectory}",
+            "environment": [],
+            "externalConsole": false,
+            "linux": {
+                "MIMode": "gdb",
+                "miDebuggerPath": "/usr/bin/gdb-multiarch",
+                "miDebuggerServerAddress":"192.168.2.103:8089",
+                "setupCommands": [
+                    {
+                        "description": "Enable pretty-printing for gdb",
+                        "text": "-enable-pretty-printing",
+                        "ignoreFailures": true
+                    },
+                    {
+                        "description": "PX4 ignore wq signals",
+                        "text": "handle SIGCONT nostop noprint nopass",
+                        "ignoreFailures": true
+                    }
+                ]
+            }
+        },
     ]
 }

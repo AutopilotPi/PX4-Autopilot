@@ -195,5 +195,7 @@ elseif("${PX4_BOARD}" MATCHES "sitl")
 		DESTINATION
 			${PROJECT_NAME}/Tools/sitl_gazebo
 		)
+else()
+	configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Debug/launch_rpi.json.in ${PX4_SOURCE_DIR}/.vscode/launch.json COPYONLY)
 
 endif()
