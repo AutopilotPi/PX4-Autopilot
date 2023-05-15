@@ -86,7 +86,6 @@ void FPGA_I2C_PWM::status(){
 		PX4_INFO("CCR%d:%d",i,getCCR(i));
 	}
 
-
 }
 
 int FPGA_I2C_PWM::updatePWM(const uint16_t *outputs, unsigned num_outputs)

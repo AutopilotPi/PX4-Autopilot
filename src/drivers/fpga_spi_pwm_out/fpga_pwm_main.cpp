@@ -36,6 +36,7 @@
 #include <px4_platform_common/getopt.h>
 #include <px4_platform_common/module.h>
 #include <px4_platform_common/px4_work_queue/WorkItemSingleShot.hpp>
+
 #include <functional>
 #include <sys/ioctl.h>
 
@@ -73,7 +74,7 @@ I2CSPIDriverBase * FPGA_SPI_PWM::instantiate(const I2CSPIDriverConfig &config, i
 
 void FPGA_SPI_PWM::RunImpl(){
 	if (should_exit()) {
-		I2CSPIDriver::ScheduleClear();
+		OutputModuleInterface::ScheduleClear();
 		_mixing_output.unregister();
 		unregister_class_devname(PWM_OUTPUT_BASE_DEVICE_PATH, _class_instance);
 		disableAllOutput();
@@ -92,11 +93,11 @@ void FPGA_SPI_PWM::RunImpl(){
 			PX4_ERR("failed to set aux pwm frequency to %.2f", (double)_freq_ext);
 		}
 		assert(FPAG_I2C_PWM_SUBPWM_NUM==2);
-		setEXTPWM(&_channel_map);
+		setEXTPWM(&_aux_channel_mask);
 
 		_state = STATE::RUNNING;
 
-		I2CSPIDriver::ScheduleOnInterval(1000000 / schd_rate_limit, 1000000 / schd_rate_limit);
+		OutputModuleInterface::ScheduleOnInterval(1000000 / schd_rate_limit, 1000000 / schd_rate_limit);
 		break;
 
 	case STATE::RUNNING:
@@ -112,11 +113,12 @@ void FPGA_SPI_PWM::RunImpl(){
 		PX4_INFO("support freq:%d ~ %d",FPGA_FREQ/(_predivide+1)/65535,FPGA_FREQ/(_predivide+1)/100);
 		PX4_INFO("main period:%d  main_freq:%d",readReg(SUBPWM0_PERIOD_REG),(int)_freq);
 		PX4_INFO("aux period:%d  aux_freq:%d",readReg(SUBPWM1_PERIOD_REG),(int)_freq_ext);
-		PX4_INFO("channel mask:%#x",_channel_map);
+		PX4_INFO("aux channel mask:%#x",_aux_channel_mask);
 		PX4_INFO("config reg:%#x",readReg(CONFIG_REG));
 		for(int i=0; i<FPGA_PWM_OUTPUT_MAX_CHANNELS;++i){
 			PX4_INFO("CCR%d:%d",i,readReg(CCR0_REG+i));
 		}
+		_mixing_output.printStatus();
 		_state = STATE::RUNNING;
 		break;
 	}

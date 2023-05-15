@@ -35,20 +35,22 @@
 #include <cmath>
 #include "fpga_spi_pwm_out.h"
 #include <drivers/drv_mixer.h>
-
+#include <px4_platform_common/px4_work_queue/WorkQueueManager.hpp>
 
 using namespace fpga_spi_pwm;
 
 FPGA_SPI_PWM::FPGA_SPI_PWM(const I2CSPIDriverConfig &config,int predivide):
-	SPI(config),I2CSPIDriver(config),_predivide(predivide){}
+	SPI(config),I2CSPIDriver(config),wq_config(config.wq_config),_predivide(predivide){}
 
 int FPGA_SPI_PWM::init(){
 	SPI::init();
 	_class_instance=register_class_devname(PWM_OUTPUT_BASE_DEVICE_PATH);
 	// register /dev/pwm_outputX, then controller could operate it by ioctl
 
-	I2CSPIDriver::ScheduleNow();
-	OutputModuleInterface::Deinit();  // deattach the work_queue item, as we don't use OutputModuleInterface for scheduling
+	I2CSPIDriver::Deinit();
+	OutputModuleInterface::ChangeWorkQueue(wq_config);
+	OutputModuleInterface::ScheduleNow();
+
 	return 0;
 }
 
@@ -123,7 +125,7 @@ bool FPGA_SPI_PWM::updateOutputs(bool stop_motors, uint16_t outputs[MAX_ACTUATOR
 	}
 	//memcpy(out, outputs, sizeof(uint16_t) * num_outputs);
 	for (unsigned i = 0; i < num_outputs; ++i) {
-		bool is_aux_chn = _channel_map & ( 1 << i*2 );
+		bool is_aux_chn = _aux_channel_mask & ( 1 << i );
 		float temp_freq= is_aux_chn?_freq_ext:_freq;
 		uint16_t temp_period = is_aux_chn?_period_ext:_period;
 
@@ -163,6 +165,14 @@ int FPGA_SPI_PWM::ioctl(cdev::file_t *filep, int cmd, unsigned long arg){
 
 	case PWM_SERVO_GET_COUNT:
 		*(unsigned *)arg = FPGA_PWM_OUTPUT_MAX_CHANNELS;
+		break;
+
+	case PWM_SERVO_SET_ARM_OK:
+	case PWM_SERVO_SET_FORCE_SAFETY_OFF:
+	case PWM_SERVO_CLEAR_ARM_OK:
+	case PWM_SERVO_SET_FORCE_SAFETY_ON:
+	case PWM_SERVO_ARM:
+	case PWM_SERVO_DISARM:
 		break;
 
 	default:
@@ -213,7 +223,7 @@ void FPGA_SPI_PWM::updatePWMParams()
 
 	for(; aux_out_temp!=0 ;aux_out_temp/=10){    // aux_out_temp may be 1234, which means 0xF in bitmask
 		int32_t temp = aux_out_temp % 10;
-		_channel_map |= 1<<(temp-1);
+		_aux_channel_mask |= 1<<(temp-1);
 	}
 
 	// notice: use the val of PWM_MAIN as the default value, which is different from PX4 document.
@@ -222,7 +232,7 @@ void FPGA_SPI_PWM::updatePWMParams()
 		uint16_t &reverse_pwm_mask = _mixing_output.reverseOutputMask();
 		uint8_t param_index=i+1;  // param_index start from 1
 		reverse_pwm_mask&= ~(1<<i);
-		if( _channel_map  & (1<<i) ){
+		if( _aux_channel_mask  & (1<<i) ){
 			_mixing_output.maxValue(i)=getParamWithSprintf("PWM_AUX_MAX%d",param_index);
 			_mixing_output.minValue(i)=getParamWithSprintf("PWM_AUX_MIN%d",param_index);
 			_mixing_output.failsafeValue(i)=getParamWithSprintf("PWM_AUX_FAIL%d",param_index);

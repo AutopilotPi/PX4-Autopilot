@@ -143,7 +143,7 @@ define_property(GLOBAL PROPERTY PX4_SRC_FILES
 # configuration
 #
 
-set(CONFIG "px4_sitl_default" CACHE STRING "desired configuration")
+#set(CONFIG "px4_sitl_default" CACHE STRING "desired configuration")
 
 include(px4_add_module)
 set(config_module_list)

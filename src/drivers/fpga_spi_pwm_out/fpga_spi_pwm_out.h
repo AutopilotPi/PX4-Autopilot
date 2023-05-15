@@ -56,7 +56,11 @@ class OutputModuleInterfaceWrapper:public OutputModuleInterface{
 	OutputModuleInterfaceWrapper():	OutputModuleInterface(MODULE_NAME, px4::wq_configurations::I2C0){};
 	// the config parameter of OutputModuleInterface is useless here, because we use I2CSPIDriver to schedule{}
 
-	void Run(){};
+	void Run(){
+		RunImpl();
+	};
+
+	virtual void RunImpl();
 };
 
 class FPGA_SPI_PWM :public device::SPI,public I2CSPIDriver<FPGA_SPI_PWM>,public OutputModuleInterfaceWrapper
@@ -65,6 +69,8 @@ public:
 	static I2CSPIDriverBase *instantiate(const I2CSPIDriverConfig &config, int runtime_instance);
 
 	FPGA_SPI_PWM(const I2CSPIDriverConfig &config,int predivide);
+
+	const px4::wq_config_t &wq_config;
 
 	bool updateOutputs(bool stop_motors, uint16_t outputs[MAX_ACTUATORS],
 			unsigned num_outputs, unsigned num_control_groups_updated) override;
@@ -84,7 +90,7 @@ public:
 
 	int init() override;
 
-	void RunImpl();
+	void RunImpl() override;
 
 	int setFreq(uint8_t sub_pwm_n,float freq);
 	void setEXTPWM(uint16_t * bitmasks);
@@ -134,7 +140,7 @@ private:
 	float _freq_ext = PWM_DEFAULT_FREQUENCY;
 	uint16_t _period=FPGA_DEFAULT_PERIOD;
 	uint16_t _period_ext= FPGA_DEFAULT_PERIOD;
-	uint16_t _channel_map=0;   // we only have 8 channels now, so we can directly use a 16bit variable  here
+	uint16_t _aux_channel_mask=0;   // we only have 8 channels now, so we can directly use a 16bit variable  here
 	void updatePWMParams();
 	void updatePWMParamTrim();
 
