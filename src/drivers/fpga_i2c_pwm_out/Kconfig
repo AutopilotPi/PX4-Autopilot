@@ -1,0 +1,5 @@
+menuconfig DRIVERS_FPGA_I2C_PWM_OUT
+	bool "fpga_i2c_pwm_out"
+	default n
+	---help---
+		Enable support for fpga_i2c_pwm_out

@@ -96,7 +96,6 @@ void FPGA_SPI_PWM::RunImpl(){
 		setEXTPWM(&_aux_channel_mask);
 
 		_state = STATE::RUNNING;
-
 		OutputModuleInterface::ScheduleOnInterval(1000000 / schd_rate_limit, 1000000 / schd_rate_limit);
 		break;
 
@@ -107,6 +106,7 @@ void FPGA_SPI_PWM::RunImpl(){
 			_parameter_update_sub.copy(&pupdate);
 			_state = STATE::INIT; // goback to INIT
 		}
+		_mixing_output.updateSubscriptions(false);
 		break;
 	case STATE::PRINTSTATUS:
 		PX4_INFO("predivide:%d",_predivide);
