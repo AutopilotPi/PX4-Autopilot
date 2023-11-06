@@ -49,6 +49,7 @@ px4_add_romfs_files(
 
 	# [3000, 3999] Flying wing"
 	3000_generic_wing
+	3001_generic_wing_with_2rotors
 
 	# [4000, 4999] Quadrotor x"
 	4001_quad_x

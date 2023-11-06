@@ -35,13 +35,10 @@ px4_add_module(
 	MAIN fpga_pwm_out
 	COMPILE_FLAGS
 	SRCS
-		#main.cpp
-		#fpga_i2c_pwm_out.cpp
 		fpga_spi_pwm_out.cpp
-		fpga_pwm_main.cpp
+		main.cpp
 	MODULE_CONFIG
 		module.yaml
 	DEPENDS
-		mixer
 		mixer_module
 	)

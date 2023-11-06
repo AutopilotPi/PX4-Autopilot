@@ -39,82 +39,30 @@
 #include <lib/mixer_module/mixer_module.hpp>
 #include <lib/cdev/CDev.hpp>
 
+class FPGA_SPI_PWM_Wrapper;
+
 namespace fpga_spi_pwm
 {
 
-/*
-	why do this wrapper?
-	the I2CSPIDriver and OutputModuleInterface are all the children of PX4::ScheduledWorkItem,
-	and I2CSPIDriver has override the Run() method(and set it to final),
-	while OutputModuleInterface didn't override it.
-
-	So if we directly inherit from OutputModuleInterface, we will need to override Run(), then conficts happend
-*/
-
-class OutputModuleInterfaceWrapper:public OutputModuleInterface{
-	public:
-	OutputModuleInterfaceWrapper():	OutputModuleInterface(MODULE_NAME, px4::wq_configurations::I2C0){};
-	// the config parameter of OutputModuleInterface is useless here, because we use I2CSPIDriver to schedule{}
-
-	void Run(){
-		RunImpl();
-	};
-
-	virtual void RunImpl();
-};
-
-class FPGA_SPI_PWM :public device::SPI,public I2CSPIDriver<FPGA_SPI_PWM>,public OutputModuleInterfaceWrapper
+class FPGA_SPI_PWM :public device::SPI
 {
 public:
-	static I2CSPIDriverBase *instantiate(const I2CSPIDriverConfig &config, int runtime_instance);
+	FPGA_SPI_PWM(int bus, uint32_t device, enum spi_mode_e mode, uint32_t frequency);
 
-	FPGA_SPI_PWM(const I2CSPIDriverConfig &config,int predivide);
-
-	const px4::wq_config_t &wq_config;
-
-	bool updateOutputs(bool stop_motors, uint16_t outputs[MAX_ACTUATORS],
-			unsigned num_outputs, unsigned num_control_groups_updated) override;
-
-	int ioctl(cdev::file_t *filep, int cmd, unsigned long arg) override;
-
-	enum class STATE : uint8_t {
-		INIT,
-		RUNNING,
-		PRINTSTATUS,
-	};
-	STATE _state{STATE::INIT};
-
-	static void print_usage();
-
-	void print_status() override;
-
-	int init() override;
-
-	void RunImpl() override;
-
+	int init() override{return device::SPI::init();};
 	int setFreq(uint8_t sub_pwm_n,float freq);
 	void setEXTPWM(uint16_t * bitmasks);
-
+	void setPredivider(int predivider){_predivide = predivider;};
 
 	~FPGA_SPI_PWM() override = default;
-
-	inline float getFrequency() {return _freq;}
 
 	/*
 	 * disable all of the output
 	 */
 	void disableAllOutput();
 
-	/*
-	 * turn on output
-	 */
-	void triggerRestart();
-
 protected:
 
-	/*
-	 * set clock divider
-	 */
 	void setPeriod(uint8_t sub_pwm_n,uint16_t value);
 
 	int writeReg(uint8_t reg_addr,uint16_t val){
@@ -128,21 +76,12 @@ protected:
 	}
 
 private:
-	uint16_t out[FPGA_PWM_OUTPUT_MAX_CHANNELS]={0};
-	MixingOutput _mixing_output{"FPGA_PWM", FPGA_PWM_OUTPUT_MAX_CHANNELS, *this, MixingOutput::SchedulingPolicy::Disabled, true};
-	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
-
-	int _class_instance{-1};  // used to save index of /dev/pwm_outputX
-
-	// parameter related :
+	friend class FPGA_SPI_PWM_Wrapper;
+	uint8_t _channel_mode_map[FPGA_PWM_OUTPUT_MAX_CHANNELS];
 	int _predivide = 0;
-	float _freq = PWM_DEFAULT_FREQUENCY;
-	float _freq_ext = PWM_DEFAULT_FREQUENCY;
-	uint16_t _period=FPGA_DEFAULT_PERIOD;
-	uint16_t _period_ext= FPGA_DEFAULT_PERIOD;
-	uint16_t _aux_channel_mask=0;   // we only have 8 channels now, so we can directly use a 16bit variable  here
-	void updatePWMParams();
-	void updatePWMParamTrim();
+	float _freqs[FPAG_PWM_SUBPWM_NUM];
+	uint16_t _periods[FPAG_PWM_SUBPWM_NUM];
+	uint16_t _period_regs[FPAG_PWM_SUBPWM_NUM] = { SUBPWM0_PERIOD_REG, SUBPWM1_PERIOD_REG};
 
 };
 

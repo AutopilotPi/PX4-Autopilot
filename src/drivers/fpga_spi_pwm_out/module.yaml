@@ -1,7 +1,7 @@
-module_name: FPGA I2C PWM Output
+module_name: FPGA Output
 actuator_output:
   output_groups:
-    - param_prefix: PWM_MAIN
+    - param_prefix: FPGA
       channel_label: 'Channel'
       standard_params:
         disarmed: { min: 800, max: 2200, default: 900 }
@@ -9,11 +9,54 @@ actuator_output:
         max: { min: 1600, max: 2200, default: 2000 }
         failsafe: { min: 800, max: 2200 }
       num_channels: 8
-    - param_prefix: PWM_AUX
-      channel_label: 'Channel'
-      standard_params:
-        disarmed: { min: 800, max: 2200, default: 900 }
-        min: { min: 800, max: 1400, default: 1000 }
-        max: { min: 1600, max: 2200, default: 2000 }
-        failsafe: { min: 800, max: 2200 }
-      num_channels: 8
+
+parameters:
+  - group: Actuator Outputs
+    definitions:
+      FPGA_PREDIVIDER:
+        description:
+          short: Clock predivider of fpga module
+          long: |
+            Clock predivider of fpga module. Affect the max/min freq and resolution of PWM.
+            As the fpga is running at 60Mhz, and the counter/period reg is 16 bits(max 65535).
+            When the predivider is 1, then the min out freq is: 60Mhz/1/65535 ~= 915 hz
+        type: int32
+        min: 1
+        max: 32
+        default: 4
+      FPGA_PWM_FREQ:
+        description:
+          short: PWM cycle frequency
+          long: |
+            Controls the PWM frequency at timing perspective.
+            This is independent from PWM update frequency.
+            Higher frequency leads to more accurate pulse width, but some ESCs and servos may not support it.
+            if the freq is more than 500Hz, then the fpga would go into duty mode. Duty cal: pulse width / 10000;
+        type: float
+        decimal: 2
+        min: 50
+        max: 32000
+        default: 50.0
+      FPGA_PWM_FREQ2:
+        description:
+          short: PWM cycle frequency (for Ext)
+          long: |
+            The fpga pwm module could produce pwm with 2 different freq.
+            Set this parameter to config the ext pwm freq.
+        type: float
+        decimal: 2
+        min: 50
+        max: 32000
+        default: 50.0
+      FPGA_PWM_CHN_MAP:
+        description:
+          short: Channels mapping for fpga pwm module
+          long: |
+            each channel could map to 0~3 (sub modules).
+            0 for default pwm module.
+            1 for EXT_PWM_MODULE_1.
+            2~3 reserved.
+        type: int32
+        min: 0
+        max: 65535
+        default: 0
