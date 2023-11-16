@@ -30,21 +30,22 @@
 # POSSIBILITY OF SUCH DAMAGE.
 #
 ############################################################################
-
-if(DEFINED ENV{AUTOPILOT_HOST})
-	set(AUTOPILOT_HOST $ENV{AUTOPILOT_HOST})
-else()
-	set(AUTOPILOT_HOST "raspberrypi")
+set(upload_command echo no upload parmeters set)
+if(DEFINED ENV{AUTOPILOT_HOST} AND DEFINED ENV{AUTOPILOT_REMOTE_USER} AND DEFINED ENV{AUTOPILOT_REMOTE_PATH})
+        set(upload_command scp ~/fly.tar.gz $ENV{AUTOPILOT_REMOTE_USER}@$ENV{AUTOPILOT_HOST}:$ENV{AUTOPILOT_REMOTE_PATH}/)
 endif()
 
 add_custom_target(upload
         COMMAND rm ~/fly -rf
         COMMAND mkdir -p ~/fly
         COMMAND cp -d ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/*   ~/fly/
-        COMMAND cp -d ${PX4_SOURCE_DIR}/posix-configs/pipx4/*.config  ~/fly/
+        COMMAND cp -d ${PX4_SOURCE_DIR}/posix-configs/autopilotpi/*.config  ~/fly/
         COMMAND cp -d ${PX4_BINARY_DIR}/etc  ~/fly/ -r
-        COMMAND tar -cvf ~/fly.tar ~/fly
+        COMMAND tar -czvf ~/fly.tar.gz ~/fly
+        COMMAND ${upload_command}
         DEPENDS px4
         COMMENT "uploading px4"
         USES_TERMINAL
 )
+
+

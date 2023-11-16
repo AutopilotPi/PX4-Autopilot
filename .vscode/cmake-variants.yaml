@@ -281,3 +281,8 @@ CONFIG:
       buildType: MinSizeRel
       settings:
         CONFIG: raspberrypi_pico_default
+    autopilotpi_v3s_default:
+      short: autopilotpi_v3s
+      buildType: RelWithDebInfo
+      settings:
+        CONFIG: autopilotpi_v3s_default

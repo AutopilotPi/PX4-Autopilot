@@ -1,0 +1,19 @@
+module_name: FPGA I2C PWM Output
+actuator_output:
+  output_groups:
+    - param_prefix: PWM_MAIN
+      channel_label: 'Channel'
+      standard_params:
+        disarmed: { min: 800, max: 2200, default: 900 }
+        min: { min: 800, max: 1400, default: 1000 }
+        max: { min: 1600, max: 2200, default: 2000 }
+        failsafe: { min: 800, max: 2200 }
+      num_channels: 8
+    - param_prefix: PWM_AUX
+      channel_label: 'Channel'
+      standard_params:
+        disarmed: { min: 800, max: 2200, default: 900 }
+        min: { min: 800, max: 1400, default: 1000 }
+        max: { min: 1600, max: 2200, default: 2000 }
+        failsafe: { min: 800, max: 2200 }
+      num_channels: 8
