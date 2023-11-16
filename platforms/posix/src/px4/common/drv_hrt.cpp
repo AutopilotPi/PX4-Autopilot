@@ -220,6 +220,11 @@ hrt_call_enter(struct hrt_call *entry)
 			next = (struct hrt_call *)sq_next(&call->link);
 
 			if ((next == nullptr) || (entry->deadline < next->deadline)) {
+				if (&call->link == &entry->link) {
+					PX4_ERR("Warning: cycle apear!");
+
+					while (1);
+				}
 				//lldbg("call enter after head\n");
 				sq_addafter(&call->link, &entry->link, &callout_queue);
 				break;
@@ -401,14 +406,10 @@ hrt_call_invoke()
 			break;
 		}
 
-		sq_rem(&call->link, &callout_queue);
 		//PX4_INFO("call pop");
 
 		/* save the intended deadline for periodic calls */
 		deadline = call->deadline;
-
-		/* zero the deadline, as the call has occurred */
-		call->deadline = 0;
 
 		/* invoke the callout (if there is one) */
 		if (call->callout) {
@@ -420,6 +421,11 @@ hrt_call_invoke()
 
 			hrt_lock();
 		}
+
+		/* zero the deadline, as the call has occurred */
+		call->deadline = 0;
+
+		sq_rem(&call->link, &callout_queue);
 
 		/* if the callout has a non-zero period, it has to be re-entered */
 		if (call->period != 0) {

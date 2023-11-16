@@ -58,7 +58,8 @@ namespace InvenSense_ICM20602
 static constexpr uint32_t SPI_SPEED = 10 * 1000 * 1000; // 10MHz SPI serial interface
 static constexpr uint8_t DIR_READ = 0x80;
 
-static constexpr uint8_t WHOAMI = 0x12;
+static constexpr uint8_t WHOAMI_ICM20602 = 0x12;
+static constexpr uint8_t WHOAMI_ICM20600 = 0x11;
 
 static constexpr float TEMPERATURE_SENSITIVITY = 326.8f; // LSB/°C
 static constexpr float TEMPERATURE_OFFSET = 25.f; // °C
