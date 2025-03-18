@@ -212,7 +212,13 @@ endfunction()
 #		px4_os_add_flags()
 #
 function(px4_os_add_flags)
-
+	message(STATUS "hi ! EVL4_TARGET : ${EVL4_TARGET}")
+	# if ("${EVL4_TARGET}" MATCHES "y")
+	# 	add_definitions(
+	# 		-D__PX4_EVL4
+	# 		-Dnoreturn_function=__attribute__\(\(noreturn\)\)
+	# 		)
+	# endif()
 	add_definitions(
 		-D__PX4_POSIX
 		-Dnoreturn_function=__attribute__\(\(noreturn\)\)

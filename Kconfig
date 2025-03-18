@@ -46,6 +46,12 @@ menu "Toolchain"
         help
             Board Platform is running the Linux operating system
 
+    config BOARD_EVL4_TARGET
+        bool "EVL4 OS Target"
+        depends on PLATFORM_POSIX
+        help
+            Board Platform is running the EVL4 operating system
+
     config BOARD_TOOLCHAIN
         string "Toolchain"
         default ""

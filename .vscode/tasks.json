@@ -16,13 +16,16 @@
             },
             "group": {
                 "kind": "build",
-                "isDefault": true,
+                "isDefault": true
             },
             "problemMatcher": {
                 "base": "$gcc",
-                "fileLocation": ["relative", "${command:cmake.buildDirectory}"]
+                "fileLocation": [
+                    "relative",
+                    "${command:cmake.buildDirectory}"
+                ]
             },
-            "presentation":{
+            "presentation": {
                 "echo": false,
                 "showReuseMessage": false,
                 "clear": true,
@@ -39,9 +42,9 @@
             },
             "group": {
                 "kind": "test",
-                "isDefault": true,
+                "isDefault": true
             },
-            "presentation":{
+            "presentation": {
                 "echo": true,
                 "showReuseMessage": false,
                 "clear": false,
@@ -64,7 +67,9 @@
                 "close": true
             },
             "problemMatcher": [],
-            "dependsOn":["px4_sitl_cleanup"]
+            "dependsOn": [
+                "px4_sitl_cleanup"
+            ]
         },
         {
             "label": "gazebo-classic build",
@@ -83,7 +88,7 @@
                 "clear": false,
                 "close": true
             },
-            "problemMatcher": [],
+            "problemMatcher": []
         },
         {
             "label": "gazebo-classic start",
@@ -122,7 +127,7 @@
                     "background": {
                         "activeOnStart": true,
                         "beginsPattern": ".",
-                        "endsPattern": ".",
+                        "endsPattern": "."
                     }
                 }
             ]
@@ -164,7 +169,7 @@
                     "background": {
                         "activeOnStart": true,
                         "beginsPattern": ".",
-                        "endsPattern": ".",
+                        "endsPattern": "."
                     }
                 }
             ]
@@ -175,7 +180,7 @@
             "options": {
                 "cwd": "${workspaceFolder}",
                 "env": {
-                    "IGN_GAZEBO_RESOURCE_PATH": "${workspaceFolder}/Tools/simulation/gz/models",
+                    "IGN_GAZEBO_RESOURCE_PATH": "${workspaceFolder}/Tools/simulation/gz/models"
                 }
             },
             "command": "gz sim -v 4 -r ${workspaceFolder}/Tools/simulation/gz/worlds/${input:gzWorld}.sdf",
@@ -191,7 +196,9 @@
                 "close": false
             },
             "problemMatcher": [],
-            "dependsOn":["gazebo kill"]
+            "dependsOn": [
+                "gazebo kill"
+            ]
         },
         {
             "label": "gazebo-classic kill",
@@ -208,7 +215,9 @@
                 "close": true
             },
             "problemMatcher": [],
-            "dependsOn":["px4_sitl_cleanup"]
+            "dependsOn": [
+                "px4_sitl_cleanup"
+            ]
         },
         {
             "label": "gazebo kill",
@@ -225,9 +234,10 @@
                 "close": true
             },
             "problemMatcher": [],
-            "dependsOn":["px4_sitl_cleanup"]
+            "dependsOn": [
+                "px4_sitl_cleanup"
+            ]
         },
-
         {
             "label": "px4_sitl_cleanup",
             "type": "shell",
@@ -243,7 +253,9 @@
                 "close": true
             },
             "problemMatcher": [],
-            "dependsOn":["px4_kill"]
+            "dependsOn": [
+                "px4_kill"
+            ]
         },
         {
             "label": "px4_kill",

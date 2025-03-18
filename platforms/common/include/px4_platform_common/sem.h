@@ -41,6 +41,11 @@
 
 #include <semaphore.h>
 
+#if defined(__PX4_EVL4)
+#include <evl/mutex.h>
+#include <evl/event.h>
+#endif
+
 #if !defined(__PX4_NUTTX)
 /* Values for protocol attribute */
 
@@ -54,11 +59,23 @@
 
 __BEGIN_DECLS
 
+#if defined(__PX4_EVL4)
+
+typedef struct {
+	evl_mutex lock;
+	evl_event wait;
+	int value;
+} px4_sem_t;
+
+#else
+
 typedef struct {
 	pthread_mutex_t lock;
 	pthread_cond_t wait;
 	int value;
 } px4_sem_t;
+
+#endif
 
 __EXPORT int		px4_sem_init(px4_sem_t *s, int pshared, unsigned value);
 __EXPORT int		px4_sem_setprotocol(px4_sem_t *s, int protocol);

@@ -121,6 +121,11 @@ CONFIG:
       buildType: MinSizeRel
       settings:
         CONFIG: px4_fmu-v6xrt_bootloader
+    radxa_rock5c_default:
+      short: radxa_rock5c
+      buildType: RelWithDebInfo
+      settings:
+        CONFIG: radxa_rock5c_default
     3dr_ctrl-zero-h7-oem-revg_default:
       short: 3dr_ctrl-zero-h7-oem-revg
       buildType: MinSizeRel
