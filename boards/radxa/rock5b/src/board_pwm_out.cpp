@@ -43,7 +43,7 @@
 
 using namespace pwm_out;
 
-const char RockSysfsPWMOut::_device[] = "/sys/class/pwm/pwmchip1";
+const char RockSysfsPWMOut::_device[] = "/sys/class/pwm/pwmchip";
 
 RockSysfsPWMOut::RockSysfsPWMOut(int max_num_outputs)
 {
@@ -74,31 +74,36 @@ int RockSysfsPWMOut::init()
 	char path[128];
 
 	for (i = 0; i < _pwm_num; ++i) {
-		::snprintf(path, sizeof(path), "%s/export", _device);
-
-		if (pwm_write_sysfs(path, i) < 0) {
+		::snprintf(path, sizeof(path), "%s%d/export", _device, i>0?i+1:0); // 1 is pwm fan
+		if (pwm_write_sysfs(path, 0) < 0) {
 			PX4_ERR("PWM export failed");
 		}
 	}
 
 	for (i = 0; i < _pwm_num; ++i) {
-		::snprintf(path, sizeof(path), "%s/pwm%u/enable", _device, i);
+		::snprintf(path, sizeof(path), "%s%d/pwm0/period", _device, i>0?i+1:0);
+		if (pwm_write_sysfs(path, (int)1e9 / FREQUENCY_PWM)) {
+			PX4_ERR("PWM period failed");
+		}
+	}
 
+
+	for (i = 0; i < _pwm_num; ++i) {
+		::snprintf(path, sizeof(path), "%s%d/pwm0/polarity", _device, i>0?i+1:0);
+		if (pwm_write_sysfs_str(path, "normal", sizeof("normal")) < 0) {
+			PX4_ERR("PWM polarity set failed");
+		}
+	}
+
+	for (i = 0; i < _pwm_num; ++i) {
+		::snprintf(path, sizeof(path), "%s%d/pwm0/enable", _device, i>0?i+1:0);
 		if (pwm_write_sysfs(path, 1) < 0) {
 			PX4_ERR("PWM enable failed");
 		}
 	}
 
 	for (i = 0; i < _pwm_num; ++i) {
-		::snprintf(path, sizeof(path), "%s/pwm%u/period", _device, i);
-
-		if (pwm_write_sysfs(path, (int)1e9 / FREQUENCY_PWM)) {
-			PX4_ERR("PWM period failed");
-		}
-	}
-
-	for (i = 0; i < _pwm_num; ++i) {
-		::snprintf(path, sizeof(path), "%s/pwm%u/duty_cycle", _device, i);
+		::snprintf(path, sizeof(path), "%s%d/pwm0/duty_cycle", _device, i>0?i+1:0);
 		_pwm_fd[i] = ::open(path, O_WRONLY | O_CLOEXEC);
 
 		if (_pwm_fd[i] == -1) {
@@ -148,6 +153,22 @@ int RockSysfsPWMOut::pwm_write_sysfs(char *path, int value)
 	if (n > 0) {
 		n = ::write(fd, data, n);	// This n is not used, but to avoid a compiler error.
 	}
+
+	::close(fd);
+
+	return 0;
+}
+
+int RockSysfsPWMOut::pwm_write_sysfs_str(char *path,const char* s, int n)
+{
+	int fd = ::open(path, O_WRONLY | O_CLOEXEC);
+
+	if (fd == -1) {
+		return -errno;
+	}
+
+	n = ::write(fd, s, n);	// This n is not used, but to avoid a compiler error.
+
 
 	::close(fd);
 

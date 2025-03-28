@@ -56,8 +56,8 @@ public:
 
 private:
 	int pwm_write_sysfs(char *path, int value);
-
-	static const int MAX_NUM_PWM = 1;
+	int pwm_write_sysfs_str(char *path,const char* s, int n);
+	static const int MAX_NUM_PWM = 4;
 	static const int FREQUENCY_PWM = 400;
 
 	int _pwm_fd[MAX_NUM_PWM];
