@@ -1,20 +1,20 @@
 /****************************************************************************
  *
- *   Copyright (C) 2020 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2017 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
  *
  * 1. Redistributions of source code must retain the above copyright
- *	notice, this list of conditions and the following disclaimer.
+ *    notice, this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright
- *	notice, this list of conditions and the following disclaimer in
- *	the documentation and/or other materials provided with the
- *	distribution.
+ *    notice, this list of conditions and the following disclaimer in
+ *    the documentation and/or other materials provided with the
+ *    distribution.
  * 3. Neither the name PX4 nor the names of its contributors may be
- *	used to endorse or promote products derived from this software
- *	without specific prior written permission.
+ *    used to endorse or promote products derived from this software
+ *    without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -31,32 +31,33 @@
  *
  ****************************************************************************/
 
+/**
+ * @file board_config.h
+ *
+ * RPI internal definitions
+ */
+
 #pragma once
 
-#include <px4_platform_common/spi.h>
+#define BOARD_OVERRIDE_UUID "RPIID00000000000" // must be of length 16
+#define PX4_SOC_ARCH_ID     PX4_SOC_ARCH_ID_RPI
 
-#if defined(CONFIG_SPI)
 
-static inline constexpr px4_spi_bus_device_t initSPIDevice(uint8_t devid_driver, uint8_t cs_index)
-{
-	px4_spi_bus_device_t ret{};
-	ret.cs_gpio = 1; // set to some non-zero value to indicate this is used
-	ret.devid = PX4_SPIDEV_ID(PX4_SPI_DEVICE_ID, cs_index);
-	ret.devtype_driver = devid_driver;
-	return ret;
-}
+// I2C
+#define CONFIG_I2C 1
+#define PX4_NUMBER_I2C_BUSES    6
 
-static inline constexpr px4_spi_bus_t initSPIBus(int bus, const px4_spi_bus_devices_t &devices, bool is_external = false)
-{
-	px4_spi_bus_t ret{};
 
-	for (int i = 0; i < SPI_BUS_MAX_DEVICES; ++i) {
-		ret.devices[i] = devices.devices[i];
-	}
+// SPI
+#define CONFIG_SPI 1
+#define BOARD_SPI_BUS_MAX_BUS_ITEMS 6
 
-	ret.bus = bus;
-	ret.is_external = is_external;
-	ret.requires_locking = false;
-	return ret;
-}
-#endif // CONFIG_SPI
+
+#define ADC_BATTERY_VOLTAGE_CHANNEL	0
+#define ADC_BATTERY_CURRENT_CHANNEL	-1
+#define ADC_AIRSPEED_VOLTAGE_CHANNEL 2
+
+#define ADC_DP_V_DIV 1.0f
+
+#include <system_config.h>
+#include <px4_platform_common/board_common.h>

@@ -7,14 +7,14 @@
  * are met:
  *
  * 1. Redistributions of source code must retain the above copyright
- *	notice, this list of conditions and the following disclaimer.
+ *    notice, this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright
- *	notice, this list of conditions and the following disclaimer in
- *	the documentation and/or other materials provided with the
- *	distribution.
+ *    notice, this list of conditions and the following disclaimer in
+ *    the documentation and/or other materials provided with the
+ *    distribution.
  * 3. Neither the name PX4 nor the names of its contributors may be
- *	used to endorse or promote products derived from this software
- *	without specific prior written permission.
+ *    used to endorse or promote products derived from this software
+ *    without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -31,32 +31,13 @@
  *
  ****************************************************************************/
 
-#pragma once
+#include <px4_arch/i2c_hw_description.h>
 
-#include <px4_platform_common/spi.h>
-
-#if defined(CONFIG_SPI)
-
-static inline constexpr px4_spi_bus_device_t initSPIDevice(uint8_t devid_driver, uint8_t cs_index)
-{
-	px4_spi_bus_device_t ret{};
-	ret.cs_gpio = 1; // set to some non-zero value to indicate this is used
-	ret.devid = PX4_SPIDEV_ID(PX4_SPI_DEVICE_ID, cs_index);
-	ret.devtype_driver = devid_driver;
-	return ret;
-}
-
-static inline constexpr px4_spi_bus_t initSPIBus(int bus, const px4_spi_bus_devices_t &devices, bool is_external = false)
-{
-	px4_spi_bus_t ret{};
-
-	for (int i = 0; i < SPI_BUS_MAX_DEVICES; ++i) {
-		ret.devices[i] = devices.devices[i];
-	}
-
-	ret.bus = bus;
-	ret.is_external = is_external;
-	ret.requires_locking = false;
-	return ret;
-}
-#endif // CONFIG_SPI
+constexpr px4_i2c_bus_t px4_i2c_buses[I2C_BUS_MAX_BUS_ITEMS] = {
+	initI2CBusExternal(0),
+	initI2CBusExternal(1),
+	initI2CBusExternal(2),
+	initI2CBusExternal(3),
+	initI2CBusExternal(4),
+	initI2CBusExternal(5),
+};
