@@ -1,0 +1,5 @@
+menuconfig DRIVERS_RP_FCC
+	bool "RP_FCC"
+	default n
+	---help---
+		Enable support for dshot by using rp2040

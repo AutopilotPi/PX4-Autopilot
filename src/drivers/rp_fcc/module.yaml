@@ -1,0 +1,11 @@
+module_name: PWM Output
+actuator_output:
+  output_groups:
+    - param_prefix: PWM_MAIN
+      channel_label: 'Channel'
+      standard_params:
+        disarmed: { min: 0, max: 0, default: 0 }
+        min: { min: 0, max: 0, default: 0 }
+        max: { min: 2000, max: 2000, default: 2000 }
+        failsafe: { min: 0, max: 0 }
+      num_channels: 8
