@@ -40,8 +40,8 @@
 if(DEFINED ENV{UPLOAD_DEST})
 	set(UPLOAD_DEST $ENV{UPLOAD_DEST})
 else()
-	set(UPLOAD_DEST "USER@IP:/DEST/")
-	#message(FATAL_ERROR "UPLOAD_DEST undefine!")
+	#set(UPLOAD_DEST "USER@IP:/DEST/")
+	message(FATAL_ERROR "UPLOAD_DEST undefine!")
 endif()
 
 add_custom_target(upload
