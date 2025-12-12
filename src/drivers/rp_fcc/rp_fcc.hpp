@@ -32,7 +32,7 @@ public:
 	static int open_serial_device(const char *device_name);
 	static int serial_config(int fd, int baudrate);
 
-	bool updateOutputs(bool stop_motors, uint16_t outputs[MAX_ACTUATORS],
+	bool updateOutputs(uint16_t outputs[MAX_ACTUATORS],
 			   unsigned num_outputs, unsigned num_control_groups_updated) override;
 
 private:

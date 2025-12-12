@@ -161,26 +161,24 @@ int RP_FCC::task_spawn(int argc, char *argv[])
 	return PX4_ERROR;
 }
 
-bool RP_FCC::updateOutputs(bool stop_motors, uint16_t outputs[MAX_ACTUATORS],
+bool RP_FCC::updateOutputs(uint16_t outputs[MAX_ACTUATORS],
 			   unsigned num_outputs, unsigned num_control_groups_updated)
 {
 	pthread_mutex_lock(&mutex);
-	if (stop_motors ) {
-		send_dshot_cmd(DShot_cmd_motor_stop, (1 << DSHOT_CHANNEL_NUM) -1 );
-	}else{
 
-		rp_fcc_output_s output_msg;
-		output_msg.cmd = RP_FCC_OUTPUT;
-		memcpy(output_msg.outputs, outputs, sizeof(uint16_t) * DSHOT_CHANNEL_NUM);
 
-		uint8_t buffer[64] = {0};
-		uint16_t len = minihdlc_serialize(buffer, (uint8_t *)&output_msg, sizeof(output_msg));
-		int ret = write(uart_fd, buffer, len);
-		if (ret < 0) {
-			PX4_ERR("Failed to write outputs");
-			return false;
-		}
+	rp_fcc_output_s output_msg;
+	output_msg.cmd = RP_FCC_OUTPUT;
+	memcpy(output_msg.outputs, outputs, sizeof(uint16_t) * DSHOT_CHANNEL_NUM);
+
+	uint8_t buffer[64] = {0};
+	uint16_t len = minihdlc_serialize(buffer, (uint8_t *)&output_msg, sizeof(output_msg));
+	int ret = write(uart_fd, buffer, len);
+	if (ret < 0) {
+		PX4_ERR("Failed to write outputs");
+		return false;
 	}
+
 	pthread_mutex_unlock(&mutex);
 	return true;
 }
