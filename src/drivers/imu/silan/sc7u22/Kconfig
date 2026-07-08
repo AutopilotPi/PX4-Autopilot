@@ -1,0 +1,5 @@
+menuconfig DRIVERS_IMU_SILAN_SC7U22
+	bool "silan sc7u22"
+	default n
+	---help---
+		Enable support for Silan SC7U22.
