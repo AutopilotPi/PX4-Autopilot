@@ -1,0 +1,5 @@
+menuconfig DRIVERS_FLEXBUS_DSHOT
+	bool "Rockchip Flexbus DShot"
+	default n
+	---help---
+		Enable DShot output through the Rockchip flexbus DShot kernel driver.

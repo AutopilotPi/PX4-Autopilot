@@ -1,0 +1,11 @@
+module_name: Flexbus DShot Output
+actuator_output:
+  output_groups:
+    - param_prefix: PWM_MAIN
+      channel_label: 'Channel'
+      standard_params:
+        disarmed: { min: 0, max: 0, default: 0 }
+        min: { min: 48, max: 48, default: 48 }
+        max: { min: 2047, max: 2047, default: 2047 }
+        failsafe: { min: 0, max: 0 }
+      num_channels: 4
