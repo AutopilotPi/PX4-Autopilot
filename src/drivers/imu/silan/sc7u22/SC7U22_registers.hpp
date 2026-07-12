@@ -68,10 +68,17 @@ enum class Register : uint8_t {
 	GYR_YL = 0x15,
 	GYR_ZH = 0x16,
 	GYR_ZL = 0x17,
+	FIFO_CFG0 = 0x1C,
+	FIFO_CFG1 = 0x1D,
+	FIFO_CFG2 = 0x1E,
+	FIFO_STAT0 = 0x1F,
+	FIFO_STAT1 = 0x20,
+	FIFO_DATA = 0x21,
 	ACC_CONF = 0x40,
 	ACC_RANGE = 0x41,
 	GYR_CONF = 0x42,
 	GYR_RANGE = 0x43,
+	FIFO_DOWNS = 0x45,
 	SOFT_RST = 0x4A,
 	PWR_CTRL = 0x7D,
 	SEG_SEL = 0x7F,
@@ -87,6 +94,29 @@ enum PWR_CTRL_BIT : uint8_t {
 	ACC_EN = Bit2,
 	GYR_EN = Bit1,
 };
+
+enum FIFO_CFG0_BIT : uint8_t {
+	FIFO_HEADER_EN = (1 << 0),
+	FIFO_GYR_EN = (1 << 1),
+	FIFO_ACC_EN = (1 << 2),
+	FIFO_TEMP_EN = (1 << 3),
+	FIFO_TIMER_EN = (1 << 4),
+	FIFO_TIMER_ALL = (1 << 5),
+};
+
+static constexpr uint8_t FIFO_MODE_BYPASS = 0x00;
+static constexpr uint8_t FIFO_MODE_FIFO = (1 << 4);
+static constexpr uint8_t FIFO_MODE_STREAM = (2 << 4);
+static constexpr uint8_t FIFO_CFG1_THRESHOLD_HIGH_MASK = 0x07;
+
+enum FIFO_STAT0_BIT : uint8_t {
+	FIFO_OVERFLOW = (1 << 4),
+	FIFO_WATERMARK = (1 << 5),
+	FIFO_EMPTY = (1 << 6),
+};
+
+static constexpr uint8_t FIFO_STAT0_COUNT_HIGH_MASK = 0x0F;
+static constexpr uint8_t FIFO_DOWNS_FILTERED_NO_DOWNSAMPLE = 0x88;
 
 static constexpr uint8_t ACC_FILTER_PERF = Bit7;
 static constexpr uint8_t ACC_BWP_OSR4_AVG1 = (0x00 << 4);
@@ -118,5 +148,7 @@ struct Data {
 #pragma pack(pop)
 
 static_assert(sizeof(Data) == 12);
+
+using FIFOData = Data;
 
 } // namespace Silan_SC7U22

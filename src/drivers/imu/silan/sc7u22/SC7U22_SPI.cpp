@@ -66,7 +66,8 @@ SC7U22_SPI::SC7U22_SPI(uint8_t bus, uint32_t device, int bus_frequency, spi_mode
 
 int SC7U22_SPI::read(unsigned address, void *data, unsigned count)
 {
-	uint8_t buf[32] {};
+	// A FIFO burst contains up to 32 complete accel/gyro frames.
+	uint8_t buf[1 + 32 * sizeof(Silan_SC7U22::FIFOData)] {};
 
 	if (count + 1 > sizeof(buf)) {
 		return -EIO;

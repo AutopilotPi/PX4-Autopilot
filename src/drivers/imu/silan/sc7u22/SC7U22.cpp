@@ -52,6 +52,8 @@ SC7U22::SC7U22(const I2CSPIDriverConfig &config, device::Device *interface) :
 	_px4_gyro.set_device_type(DRV_IMU_DEVTYPE_SC7U22);
 	_px4_gyro.set_range(math::radians(2000.f));
 	_px4_gyro.set_scale(math::radians(2000.f) / 32768.f);
+
+	ConfigureSampleRate(_px4_gyro.get_max_rate_hz());
 }
 
 SC7U22::~SC7U22()
@@ -59,6 +61,9 @@ SC7U22::~SC7U22()
 	perf_free(_sample_perf);
 	perf_free(_bad_register_perf);
 	perf_free(_bad_transfer_perf);
+	perf_free(_fifo_empty_perf);
+	perf_free(_fifo_overflow_perf);
+	perf_free(_fifo_reset_perf);
 
 	delete _interface;
 }
@@ -84,7 +89,7 @@ int SC7U22::init()
 		return PX4_ERROR;
 	}
 
-	ScheduleOnInterval(SAMPLE_INTERVAL_US, SAMPLE_INTERVAL_US);
+	ScheduleOnInterval(_fifo_read_interval_us, _fifo_read_interval_us);
 	return PX4_OK;
 }
 
@@ -114,34 +119,63 @@ bool SC7U22::Configure()
 	RegisterWrite(Register::PWR_CTRL, PWR_CTRL_BIT::TEMP_EN | PWR_CTRL_BIT::ACC_EN | PWR_CTRL_BIT::GYR_EN);
 	px4_usleep(60_ms);
 
+	// Store filtered accel and gyro samples at the full 1.6 kHz ODR, without headers.
+	RegisterWrite(Register::FIFO_DOWNS, FIFO_DOWNS_FILTERED_NO_DOWNSAMPLE);
+	RegisterWrite(Register::FIFO_CFG0, FIFO_CFG0_BIT::FIFO_ACC_EN | FIFO_CFG0_BIT::FIFO_GYR_EN);
+	RegisterWrite(Register::FIFO_CFG2, _fifo_watermark_words & 0xFF);
+	RegisterWrite(Register::FIFO_CFG1,
+		      FIFO_MODE_STREAM | ((_fifo_watermark_words >> 8) & FIFO_CFG1_THRESHOLD_HIGH_MASK));
+
 	return RegisterRead(Register::WHO_AM_I) == WHOAMI;
+}
+
+void SC7U22::ConfigureSampleRate(int sample_rate)
+{
+	const float requested_interval_us = 1e6f / math::max(sample_rate, 1);
+	const uint32_t fifo_samples = math::constrain(static_cast<uint32_t>(roundf(requested_interval_us / FIFO_SAMPLE_DT_US)),
+				      1u, static_cast<uint32_t>(FIFO_MAX_SAMPLES));
+
+	_fifo_read_interval_us = fifo_samples * FIFO_SAMPLE_DT_US;
+	_fifo_watermark_words = fifo_samples * FIFO_WORDS_PER_SAMPLE;
 }
 
 void SC7U22::RunImpl()
 {
 	perf_begin(_sample_perf);
 
-	Data data{};
 	const hrt_abstime timestamp_sample = hrt_absolute_time();
+	uint8_t fifo_status = 0;
+	const uint16_t fifo_words = FIFOReadCount(fifo_status);
 
-	if (_interface->read(static_cast<uint8_t>(Register::ACC_XH), &data, sizeof(data)) != PX4_OK) {
-		perf_count(_bad_transfer_perf);
+	if (fifo_status & FIFO_STAT0_BIT::FIFO_OVERFLOW) {
+		perf_count(_fifo_overflow_perf);
+		FIFOReset();
 		perf_cancel(_sample_perf);
 		return;
 	}
 
-	const int16_t accel_x = Combine(data.accel_x_msb, data.accel_x_lsb);
-	const int16_t accel_y = Combine(data.accel_y_msb, data.accel_y_lsb);
-	const int16_t accel_z = Combine(data.accel_z_msb, data.accel_z_lsb);
-	const int16_t gyro_x = Combine(data.gyro_x_msb, data.gyro_x_lsb);
-	const int16_t gyro_y = Combine(data.gyro_y_msb, data.gyro_y_lsb);
-	const int16_t gyro_z = Combine(data.gyro_z_msb, data.gyro_z_lsb);
+	const uint16_t complete_samples = fifo_words / FIFO_WORDS_PER_SAMPLE;
 
-	_px4_accel.set_error_count(perf_event_count(_bad_transfer_perf));
-	_px4_accel.update(timestamp_sample, accel_x, accel_y, accel_z);
+	if (complete_samples == 0) {
+		perf_count(_fifo_empty_perf);
+		perf_cancel(_sample_perf);
+		return;
+	}
 
-	_px4_gyro.set_error_count(perf_event_count(_bad_transfer_perf));
-	_px4_gyro.update(timestamp_sample, gyro_x, gyro_y, gyro_z);
+	if (complete_samples > FIFO_MAX_SAMPLES) {
+		perf_count(_fifo_overflow_perf);
+		FIFOReset();
+		perf_cancel(_sample_perf);
+		return;
+	}
+
+	if (!FIFORead(timestamp_sample, complete_samples)) {
+		perf_cancel(_sample_perf);
+		return;
+	}
+
+	// The datasheet requires cycling through bypass after each complete FIFO read.
+	FIFOReset();
 
 	perf_end(_sample_perf);
 }
@@ -153,6 +187,68 @@ void SC7U22::print_status()
 	perf_print_counter(_sample_perf);
 	perf_print_counter(_bad_register_perf);
 	perf_print_counter(_bad_transfer_perf);
+	perf_print_counter(_fifo_empty_perf);
+	perf_print_counter(_fifo_overflow_perf);
+	perf_print_counter(_fifo_reset_perf);
+}
+
+uint16_t SC7U22::FIFOReadCount(uint8_t &status)
+{
+	uint8_t fifo_status[2] {};
+
+	if (_interface->read(static_cast<uint8_t>(Register::FIFO_STAT0), fifo_status, sizeof(fifo_status)) != PX4_OK) {
+		perf_count(_bad_transfer_perf);
+		status = 0;
+		return 0;
+	}
+
+	status = fifo_status[0];
+	return ((fifo_status[0] & FIFO_STAT0_COUNT_HIGH_MASK) << 8) | fifo_status[1];
+}
+
+bool SC7U22::FIFORead(const hrt_abstime &timestamp_sample, uint8_t samples)
+{
+	FIFOData data[FIFO_MAX_SAMPLES] {};
+	const size_t transfer_size = samples * sizeof(FIFOData);
+
+	if (_interface->read(static_cast<uint8_t>(Register::FIFO_DATA), data, transfer_size) != PX4_OK) {
+		perf_count(_bad_transfer_perf);
+		FIFOReset();
+		return false;
+	}
+
+	sensor_accel_fifo_s accel{};
+	sensor_gyro_fifo_s gyro{};
+	accel.timestamp_sample = timestamp_sample;
+	gyro.timestamp_sample = timestamp_sample;
+	accel.dt = FIFO_SAMPLE_DT_US;
+	gyro.dt = FIFO_SAMPLE_DT_US;
+	accel.samples = samples;
+	gyro.samples = samples;
+
+	for (uint8_t i = 0; i < samples; i++) {
+		accel.x[i] = Combine(data[i].accel_x_msb, data[i].accel_x_lsb);
+		accel.y[i] = Combine(data[i].accel_y_msb, data[i].accel_y_lsb);
+		accel.z[i] = Combine(data[i].accel_z_msb, data[i].accel_z_lsb);
+		gyro.x[i] = Combine(data[i].gyro_x_msb, data[i].gyro_x_lsb);
+		gyro.y[i] = Combine(data[i].gyro_y_msb, data[i].gyro_y_lsb);
+		gyro.z[i] = Combine(data[i].gyro_z_msb, data[i].gyro_z_lsb);
+	}
+
+	const uint64_t error_count = perf_event_count(_bad_transfer_perf) + perf_event_count(_fifo_overflow_perf);
+	_px4_accel.set_error_count(error_count);
+	_px4_gyro.set_error_count(error_count);
+	_px4_accel.updateFIFO(accel);
+	_px4_gyro.updateFIFO(gyro);
+	return true;
+}
+
+void SC7U22::FIFOReset()
+{
+	perf_count(_fifo_reset_perf);
+	RegisterWrite(Register::FIFO_CFG1, FIFO_MODE_BYPASS);
+	RegisterWrite(Register::FIFO_CFG1,
+		      FIFO_MODE_STREAM | ((_fifo_watermark_words >> 8) & FIFO_CFG1_THRESHOLD_HIGH_MASK));
 }
 
 uint8_t SC7U22::RegisterRead(Register reg)

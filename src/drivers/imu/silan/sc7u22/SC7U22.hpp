@@ -43,6 +43,8 @@
 #include <lib/perf/perf_counter.h>
 #include <px4_platform_common/i2c_spi_buses.h>
 #include <px4_platform_common/px4_work_queue/ScheduledWorkItem.hpp>
+#include <uORB/topics/sensor_accel_fifo.h>
+#include <uORB/topics/sensor_gyro_fifo.h>
 
 class SC7U22 : public I2CSPIDriver<SC7U22>
 {
@@ -59,9 +61,15 @@ public:
 
 private:
 	static constexpr uint32_t SAMPLE_RATE = 1600;
-	static constexpr uint32_t SAMPLE_INTERVAL_US = 1000000 / SAMPLE_RATE;
+	static constexpr uint32_t FIFO_SAMPLE_DT_US = 1000000 / SAMPLE_RATE;
+	static constexpr uint8_t FIFO_MAX_SAMPLES = sizeof(sensor_gyro_fifo_s::x) / sizeof(sensor_gyro_fifo_s::x[0]);
+	static constexpr uint16_t FIFO_WORDS_PER_SAMPLE = sizeof(Silan_SC7U22::FIFOData) / 2;
 
 	bool Configure();
+	void ConfigureSampleRate(int sample_rate);
+	bool FIFORead(const hrt_abstime &timestamp_sample, uint8_t samples);
+	uint16_t FIFOReadCount(uint8_t &status);
+	void FIFOReset();
 
 	uint8_t RegisterRead(Silan_SC7U22::Register reg);
 	int RegisterWrite(Silan_SC7U22::Register reg, uint8_t value);
@@ -72,8 +80,13 @@ private:
 
 	PX4Accelerometer _px4_accel;
 	PX4Gyroscope _px4_gyro;
+	uint32_t _fifo_read_interval_us{4 * FIFO_SAMPLE_DT_US};
+	uint16_t _fifo_watermark_words{4 * FIFO_WORDS_PER_SAMPLE};
 
 	perf_counter_t _sample_perf{perf_alloc(PC_ELAPSED, MODULE_NAME": read")};
 	perf_counter_t _bad_register_perf{perf_alloc(PC_COUNT, MODULE_NAME": bad register")};
 	perf_counter_t _bad_transfer_perf{perf_alloc(PC_COUNT, MODULE_NAME": bad transfer")};
+	perf_counter_t _fifo_empty_perf{perf_alloc(PC_COUNT, MODULE_NAME": FIFO empty")};
+	perf_counter_t _fifo_overflow_perf{perf_alloc(PC_COUNT, MODULE_NAME": FIFO overflow")};
+	perf_counter_t _fifo_reset_perf{perf_alloc(PC_COUNT, MODULE_NAME": FIFO reset")};
 };
