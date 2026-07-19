@@ -38,4 +38,7 @@ constexpr px4_spi_bus_t px4_spi_buses[SPI_BUS_MAX_BUS_ITEMS] = {
 	initSPIBus(0, {
 		initSPIDevice(DRV_IMU_DEVTYPE_SC7U22, 0)
 	}, false),
+	initSPIBus(1, {
+		initSPIDevice(DRV_OSD_DEVTYPE_ATXXXX, 1)
+	}, false),
 };
