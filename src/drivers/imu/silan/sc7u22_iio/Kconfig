@@ -1,0 +1,7 @@
+menuconfig DRIVERS_IMU_SILAN_SC7U22_IIO
+	bool "Silan SC7U22 Linux IIO"
+	default n
+	depends on PLATFORM_POSIX
+	---help---
+		Enable the PX4 userspace adapter for the Linux SC7U22 IIO driver.
+
