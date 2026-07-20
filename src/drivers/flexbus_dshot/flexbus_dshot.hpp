@@ -3,6 +3,7 @@
 #include <px4_platform_common/module.h>
 #include <lib/mixer_module/mixer_module.hpp>
 #include <drivers/drv_hrt.h>
+#include <drivers/drv_dshot.h>
 
 #include <uORB/SubscriptionInterval.hpp>
 #include <uORB/topics/parameter_update.h>
@@ -17,8 +18,9 @@ class FlexbusDShot final : public ModuleBase<FlexbusDShot>, public OutputModuleI
 public:
 	static constexpr unsigned DSHOT_CHANNELS = 4;
 	static constexpr uint16_t DSHOT_DISARM_VALUE = 0;
-	static constexpr uint16_t DSHOT_MIN_VALUE = 48;
-	static constexpr uint16_t DSHOT_MAX_VALUE = 2047;
+	static constexpr uint16_t DSHOT_MIN_THROTTLE = 1;
+	static constexpr uint16_t DSHOT_MAX_THROTTLE = 1999;
+	static constexpr uint16_t DSHOT_COMMAND_OFFSET = DShot_cmd_MIN_throttle;
 	static constexpr uint32_t DSHOT_DEFAULT_RATE = 600000;
 	static constexpr hrt_abstime ESC_INIT_DURATION = 1200_ms;
 	static constexpr hrt_abstime ESC_INIT_INTERVAL = 2_ms;
@@ -48,7 +50,7 @@ private:
 	int send_dshot_cmd(uint16_t cmd, int dshot_channel_mask);
 	void update_params();
 
-	MixingOutput _mixing_output{PARAM_PREFIX, DSHOT_CHANNELS, *this, MixingOutput::SchedulingPolicy::Auto, true};
+	MixingOutput _mixing_output{PARAM_PREFIX, DSHOT_CHANNELS, *this, MixingOutput::SchedulingPolicy::Auto, false, false};
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
 	int _fd{-1};
@@ -63,4 +65,8 @@ private:
 	perf_counter_t _cycle_perf{perf_alloc(PC_ELAPSED, MODULE_NAME": cycle")};
 	perf_counter_t _interval_perf{perf_alloc(PC_INTERVAL, MODULE_NAME": interval")};
 	perf_counter_t _io_error_perf{perf_alloc(PC_COUNT, MODULE_NAME": io errors")};
+
+	DEFINE_PARAMETERS(
+		(ParamFloat<px4::params::DSHOT_MIN>) _param_dshot_min
+	)
 };

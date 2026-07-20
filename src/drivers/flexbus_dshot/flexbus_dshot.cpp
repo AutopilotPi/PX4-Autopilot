@@ -160,7 +160,13 @@ bool FlexbusDShot::updateOutputs(uint16_t outputs[MAX_ACTUATORS],
 		uint16_t value = DSHOT_DISARM_VALUE;
 
 		if (i < num_outputs) {
-			value = outputs[i] > DSHOT_MAX_VALUE ? DSHOT_MAX_VALUE : outputs[i];
+			const uint16_t output = math::min(outputs[i], DSHOT_MAX_THROTTLE);
+
+			// MixingOutput uses the same 0..1999 throttle range as the standard PX4
+			// DShot driver. Values 0..47 are reserved for DShot commands, so add the
+			// command offset only to armed throttle values. A zero output must remain
+			// zero so it is transmitted as the motor-stop command.
+			value = output == DSHOT_DISARM_VALUE ? DSHOT_DISARM_VALUE : output + DSHOT_COMMAND_OFFSET;
 		}
 
 		frame.value[i] = value;
@@ -368,6 +374,13 @@ int FlexbusDShot::custom_command(int argc, char *argv[])
 void FlexbusDShot::update_params()
 {
 	ModuleParams::updateParams();
+
+	// Match the standard PX4 DShot driver's normalized minimum-throttle
+	// semantics. The DShot command offset is added immediately before the
+	// raw frame is sent to the Flexbus kernel driver.
+	_mixing_output.setAllMinValues(math::constrain(static_cast<int>(_param_dshot_min.get()
+				       * static_cast<float>(DSHOT_MAX_THROTTLE)),
+				       static_cast<int>(DSHOT_MIN_THROTTLE), static_cast<int>(DSHOT_MAX_THROTTLE)));
 }
 
 int FlexbusDShot::print_status()

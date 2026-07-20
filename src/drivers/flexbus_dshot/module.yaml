@@ -5,7 +5,25 @@ actuator_output:
       channel_label: 'Channel'
       standard_params:
         disarmed: { min: 0, max: 0, default: 0 }
-        min: { min: 48, max: 48, default: 48 }
-        max: { min: 2047, max: 2047, default: 2047 }
+        min: { min: 1, max: 1, default: 1 }
+        max: { min: 1999, max: 1999, default: 1999 }
         failsafe: { min: 0, max: 0 }
       num_channels: 4
+
+parameters:
+  - group: DShot
+    definitions:
+      DSHOT_MIN:
+        description:
+          short: Minimum DShot Motor Output
+          long: |
+            Minimum Output Value for DShot in percent. The value depends on the ESC. Make
+            sure to set this high enough so that the motors are always spinning while
+            armed.
+        type: float
+        unit: norm
+        min: 0
+        max: 1
+        decimal: 2
+        increment: 0.01
+        default: 0.055
