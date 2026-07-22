@@ -42,6 +42,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -91,7 +92,6 @@ uint32_t SC7U22_IIO::make_device_id(uint8_t bus, uint8_t chip_select)
 }
 
 SC7U22_IIO::SC7U22_IIO(const char *device_path, enum Rotation rotation, uint8_t bus, uint8_t chip_select) :
-	ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::hp_default),
 	_px4_accel(make_device_id(bus, chip_select), rotation),
 	_px4_gyro(make_device_id(bus, chip_select), rotation)
 {
@@ -109,7 +109,6 @@ SC7U22_IIO::SC7U22_IIO(const char *device_path, enum Rotation rotation, uint8_t 
 
 SC7U22_IIO::~SC7U22_IIO()
 {
-	ScheduleClear();
 	disable_iio();
 
 	if (_fd >= 0) {
@@ -350,7 +349,6 @@ int SC7U22_IIO::init()
 	}
 
 	PX4_INFO("using %s (24-byte scan, monotonic timestamp)", _device_path);
-	ScheduleOnInterval(PUBLISH_INTERVAL_US, PUBLISH_INTERVAL_US);
 	return PX4_OK;
 }
 
@@ -454,14 +452,8 @@ bool SC7U22_IIO::process_scan(const uint8_t *scan)
 	return true;
 }
 
-void SC7U22_IIO::Run()
+void SC7U22_IIO::read_available()
 {
-	if (should_exit()) {
-		ScheduleClear();
-		exit_and_cleanup();
-		return;
-	}
-
 	perf_begin(_read_perf);
 
 	for (unsigned iteration = 0; iteration < 8; iteration++) {
@@ -498,6 +490,45 @@ void SC7U22_IIO::Run()
 	perf_end(_read_perf);
 }
 
+void SC7U22_IIO::run()
+{
+	struct pollfd poll_fd {};
+	poll_fd.fd = _fd;
+	poll_fd.events = POLLIN;
+
+	while (!should_exit()) {
+		poll_fd.revents = 0;
+		const int ret = ::poll(&poll_fd, 1, POLL_TIMEOUT_MS);
+
+		if (ret < 0) {
+			if (errno != EINTR) {
+				perf_count(_bad_read_perf);
+				px4_usleep(1000);
+			}
+
+			continue;
+		}
+
+		if (ret == 0) {
+			/* Watchdog read in case an IIO notification was missed. */
+			read_available();
+			continue;
+		}
+
+		if (poll_fd.revents & POLLIN) {
+			read_available();
+		}
+
+		if (poll_fd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+			perf_count(_bad_read_perf);
+
+			if (poll_fd.revents & POLLNVAL) {
+				break;
+			}
+		}
+	}
+}
+
 int SC7U22_IIO::print_status()
 {
 	PX4_INFO("device: %s", _device_path);
@@ -514,6 +545,28 @@ int SC7U22_IIO::print_status()
 }
 
 int SC7U22_IIO::task_spawn(int argc, char *argv[])
+{
+	_task_id = px4_task_spawn_cmd(MODULE_NAME,
+				      SCHED_DEFAULT,
+				      SCHED_PRIORITY_FAST_DRIVER,
+				      3000,
+				      (px4_main_t)&run_trampoline,
+				      (char *const *)argv);
+
+	if (_task_id < 0) {
+		_task_id = -1;
+		return -errno;
+	}
+
+	if (wait_until_running() != PX4_OK) {
+		_task_id = -1;
+		return PX4_ERROR;
+	}
+
+	return PX4_OK;
+}
+
+SC7U22_IIO *SC7U22_IIO::instantiate(int argc, char *argv[])
 {
 	int myoptind = 1;
 	const char *myoptarg = nullptr;
@@ -542,12 +595,14 @@ int SC7U22_IIO::task_spawn(int argc, char *argv[])
 			break;
 
 		default:
-			return print_usage("unrecognized option");
+			print_usage("unrecognized option");
+			return nullptr;
 		}
 	}
 
 	if (rotation < 0 || rotation > 35 || bus < 0 || bus > 31 || chip_select < 0 || chip_select > 255) {
-		return print_usage("invalid rotation, bus, or chip-select");
+		print_usage("invalid rotation, bus, or chip-select");
+		return nullptr;
 	}
 
 	SC7U22_IIO *instance = new SC7U22_IIO(device_path, static_cast<enum Rotation>(rotation),
@@ -555,17 +610,15 @@ int SC7U22_IIO::task_spawn(int argc, char *argv[])
 
 	if (instance == nullptr) {
 		PX4_ERR("alloc failed");
-		return PX4_ERROR;
+		return nullptr;
 	}
 
 	if (instance->init() != PX4_OK) {
 		delete instance;
-		return PX4_ERROR;
+		return nullptr;
 	}
 
-	_object.store(instance);
-	_task_id = task_id_is_work_queue;
-	return PX4_OK;
+	return instance;
 }
 
 int SC7U22_IIO::custom_command(int argc, char *argv[])
@@ -584,7 +637,8 @@ int SC7U22_IIO::print_usage(const char *reason)
 ### Description
 PX4 userspace adapter for the Linux SC7U22 IIO kernel driver. The adapter
 configures the IIO scan buffer for six-axis data plus a monotonic timestamp,
-then publishes two 1600 Hz scans per 800 Hz PX4 FIFO update.
+waits for IIO poll notifications, then publishes two 1600 Hz scans per 800 Hz
+PX4 FIFO update.
 
 The Linux kernel driver must own the SPI device. Do not start the legacy
 `sc7u22` spidev driver at the same time.

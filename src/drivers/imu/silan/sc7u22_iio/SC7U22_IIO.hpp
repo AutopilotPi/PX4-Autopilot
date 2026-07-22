@@ -38,35 +38,36 @@
 #include <lib/drivers/gyroscope/PX4Gyroscope.hpp>
 #include <lib/perf/perf_counter.h>
 #include <px4_platform_common/module.h>
-#include <px4_platform_common/px4_work_queue/ScheduledWorkItem.hpp>
 #include <uORB/topics/sensor_accel_fifo.h>
 #include <uORB/topics/sensor_gyro_fifo.h>
 
 #include <limits.h>
 
-class SC7U22_IIO final : public ModuleBase<SC7U22_IIO>, public px4::ScheduledWorkItem
+class SC7U22_IIO final : public ModuleBase<SC7U22_IIO>
 {
 public:
 	SC7U22_IIO(const char *device_path, enum Rotation rotation, uint8_t bus, uint8_t chip_select);
 	~SC7U22_IIO() override;
 
 	static int task_spawn(int argc, char *argv[]);
+	static SC7U22_IIO *instantiate(int argc, char *argv[]);
 	static int custom_command(int argc, char *argv[]);
 	static int print_usage(const char *reason = nullptr);
 
 	int init();
 	int print_status() override;
+	void run() override;
 
 private:
 	static constexpr uint32_t SAMPLE_RATE_HZ{1600};
 	static constexpr uint32_t SAMPLE_INTERVAL_US{1000000 / SAMPLE_RATE_HZ};
 	static constexpr uint8_t SAMPLES_PER_PUBLISH{2};
-	static constexpr uint32_t PUBLISH_INTERVAL_US{SAMPLE_INTERVAL_US * SAMPLES_PER_PUBLISH};
 	static constexpr size_t IIO_SCAN_SIZE{24};
 	static constexpr size_t IIO_TIMESTAMP_OFFSET{16};
 	static constexpr size_t MAX_READ_SCANS{64};
+	static constexpr int POLL_TIMEOUT_MS{10};
 
-	void Run() override;
+	void read_available();
 	bool configure_iio();
 	void disable_iio();
 	bool validate_scan_layout() const;
