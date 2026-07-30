@@ -53,6 +53,13 @@ LoadMon::LoadMon() :
 	ModuleParams(nullptr),
 	ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::lp_default)
 {
+#if defined(__PX4_LINUX)
+	const long online_cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+
+	if (online_cpu_count > 0) {
+		_cpu_count = online_cpu_count;
+	}
+#endif
 }
 
 LoadMon::~LoadMon()
@@ -223,7 +230,9 @@ void LoadMon::cpuload()
 		cpuload.ram_usage = -1;
 	}
 
-	cpuload.load = interval_spent_time / interval;
+	// Process CPU time accumulates across all threads, so normalize it by the
+	// number of online CPUs to report utilization of the total CPU capacity.
+	cpuload.load = interval_spent_time / (interval * _cpu_count);
 #elif defined(__PX4_NUTTX)
 	// get ram usage
 	struct mallinfo mem = mallinfo();

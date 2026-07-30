@@ -50,6 +50,7 @@
 
 #if defined(__PX4_LINUX)
 #include <sys/times.h>
+#include <unistd.h>
 #endif
 
 namespace load_mon
@@ -97,6 +98,7 @@ private:
 	/* calculate usage directly from clock ticks on Linux */
 	clock_t _last_total_time_stamp{};
 	clock_t _last_spent_time_stamp{};
+	long _cpu_count{1};
 #elif defined(__PX4_NUTTX)
 	hrt_abstime _last_idle_time {0};
 	hrt_abstime _last_idle_time_sample{0};
