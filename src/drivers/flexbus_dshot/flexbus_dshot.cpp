@@ -155,6 +155,7 @@ bool FlexbusDShot::updateOutputs(uint16_t outputs[MAX_ACTUATORS],
 	(void)num_control_groups_updated;
 
 	rk_dshot_frame frame {};
+	bool command_sent = false;
 
 	for (unsigned i = 0; i < DSHOT_CHANNELS; ++i) {
 		uint16_t value = DSHOT_DISARM_VALUE;
@@ -166,7 +167,15 @@ bool FlexbusDShot::updateOutputs(uint16_t outputs[MAX_ACTUATORS],
 			// DShot driver. Values 0..47 are reserved for DShot commands, so add the
 			// command offset only to armed throttle values. A zero output must remain
 			// zero so it is transmitted as the motor-stop command.
-			value = output == DSHOT_DISARM_VALUE ? DSHOT_DISARM_VALUE : output + DSHOT_COMMAND_OFFSET;
+			if (output == DSHOT_DISARM_VALUE) {
+				if (_current_command.valid() && (_current_command.motor_mask & (1u << i))) {
+					value = _current_command.command;
+					command_sent = true;
+				}
+
+			} else {
+				value = output + DSHOT_COMMAND_OFFSET;
+			}
 		}
 
 		frame.value[i] = value;
@@ -177,6 +186,17 @@ bool FlexbusDShot::updateOutputs(uint16_t outputs[MAX_ACTUATORS],
 
 	if (ret) {
 		memcpy(_last_outputs, frame.value, sizeof(_last_outputs));
+
+		if (command_sent && _current_command.valid()) {
+			--_current_command.num_repetitions;
+
+			// Persist the setting after the requested command burst.
+			if (_current_command.num_repetitions == 0 && _current_command.save) {
+				_current_command.command = DShot_cmd_save_settings;
+				_current_command.num_repetitions = 10;
+				_current_command.save = false;
+			}
+		}
 	}
 
 	pthread_mutex_unlock(&_mutex);
@@ -237,9 +257,86 @@ void FlexbusDShot::Run()
 		update_params();
 	}
 
+	handle_vehicle_commands();
+
 	_mixing_output.updateSubscriptions(true);
 
 	perf_end(_cycle_perf);
+}
+
+void FlexbusDShot::handle_vehicle_commands()
+{
+	vehicle_command_s vehicle_command;
+
+	while (!_current_command.valid() && _vehicle_command_sub.update(&vehicle_command)) {
+		if (vehicle_command.command != vehicle_command_s::VEHICLE_CMD_CONFIGURE_ACTUATOR) {
+			continue;
+		}
+
+		int function = (int)(vehicle_command.param5 + 0.5);
+
+		if (function < 1000) {
+			const int first_motor_function = 1; // MAVLink ACTUATOR_OUTPUT_FUNCTION_MOTOR1
+			const int first_servo_function = 33;
+
+			if (function >= first_motor_function && function < first_motor_function + actuator_test_s::MAX_NUM_MOTORS) {
+				function = function - first_motor_function + actuator_test_s::FUNCTION_MOTOR1;
+
+			} else if (function >= first_servo_function
+				   && function < first_servo_function + actuator_test_s::MAX_NUM_SERVOS) {
+				function = function - first_servo_function + actuator_test_s::FUNCTION_SERVO1;
+
+			} else {
+				function = INT32_MAX;
+			}
+
+		} else {
+			function -= 1000;
+		}
+
+		const int type = (int)(vehicle_command.param1 + 0.5f);
+		int index = -1;
+
+		for (unsigned i = 0; i < DSHOT_CHANNELS; ++i) {
+			if ((int)_mixing_output.outputFunction(i) == function) {
+				index = i;
+				break;
+			}
+		}
+
+		vehicle_command_ack_s command_ack{};
+		command_ack.command = vehicle_command.command;
+		command_ack.target_system = vehicle_command.source_system;
+		command_ack.target_component = vehicle_command.source_component;
+		command_ack.result = vehicle_command_ack_s::VEHICLE_CMD_RESULT_UNSUPPORTED;
+
+		if (index != -1) {
+			dshot_command_t command = DShot_cmd_motor_stop;
+
+			switch (type) {
+			case 1: command = DShot_cmd_beacon1; break;
+			case 2: command = DShot_cmd_3d_mode_on; break;
+			case 3: command = DShot_cmd_3d_mode_off; break;
+			case 4: command = DShot_cmd_spin_direction_1; break;
+			case 5: command = DShot_cmd_spin_direction_2; break;
+			}
+
+			if (command == DShot_cmd_motor_stop) {
+				PX4_WARN("unknown actuator configuration command: %i", type);
+
+			} else {
+				PX4_DEBUG("setting DShot command: index: %i type: %i", index, type);
+				_current_command.command = command;
+				_current_command.motor_mask = 1u << index;
+				_current_command.num_repetitions = 10;
+				_current_command.save = true;
+				command_ack.result = vehicle_command_ack_s::VEHICLE_CMD_RESULT_ACCEPTED;
+			}
+		}
+
+		command_ack.timestamp = hrt_absolute_time();
+		_command_ack_pub.publish(command_ack);
+	}
 }
 
 int FlexbusDShot::custom_command(int argc, char *argv[])

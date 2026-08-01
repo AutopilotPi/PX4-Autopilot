@@ -6,7 +6,12 @@
 #include <drivers/drv_dshot.h>
 
 #include <uORB/SubscriptionInterval.hpp>
+#include <uORB/Publication.hpp>
+#include <uORB/Subscription.hpp>
+#include <uORB/topics/actuator_test.h>
 #include <uORB/topics/parameter_update.h>
+#include <uORB/topics/vehicle_command.h>
+#include <uORB/topics/vehicle_command_ack.h>
 
 #include <pthread.h>
 #include <stdint.h>
@@ -43,15 +48,27 @@ private:
 		uint16_t value[DSHOT_CHANNELS];
 	};
 
+	struct Command {
+		dshot_command_t command{DShot_cmd_motor_stop};
+		int num_repetitions{0};
+		uint8_t motor_mask{0};
+		bool save{false};
+
+		bool valid() const { return num_repetitions > 0; }
+	};
+
 	void Run() override;
 
 	static int open_device(const char *device_name, uint32_t rate_hz, bool telemetry);
 	bool send_frame(const rk_dshot_frame &frame);
 	int send_dshot_cmd(uint16_t cmd, int dshot_channel_mask);
+	void handle_vehicle_commands();
 	void update_params();
 
 	MixingOutput _mixing_output{PARAM_PREFIX, DSHOT_CHANNELS, *this, MixingOutput::SchedulingPolicy::Auto, false, false};
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
+	uORB::Subscription _vehicle_command_sub{ORB_ID(vehicle_command)};
+	uORB::Publication<vehicle_command_ack_s> _command_ack_pub{ORB_ID(vehicle_command_ack)};
 
 	int _fd{-1};
 	const char *_device_name{DEFAULT_DEVICE};
@@ -60,6 +77,7 @@ private:
 	hrt_abstime _esc_init_start{0};
 	bool _esc_init_done{false};
 	uint16_t _last_outputs[DSHOT_CHANNELS] {};
+	Command _current_command{};
 	pthread_mutex_t _mutex;
 
 	perf_counter_t _cycle_perf{perf_alloc(PC_ELAPSED, MODULE_NAME": cycle")};

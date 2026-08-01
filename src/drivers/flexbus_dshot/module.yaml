@@ -8,6 +8,11 @@ actuator_output:
         min: { min: 1, max: 1, default: 1 }
         max: { min: 1999, max: 1999, default: 1999 }
         failsafe: { min: 0, max: 0 }
+      supported_actions:
+        set_spin_direction1:
+          actuator_types: [motor]
+        set_spin_direction2:
+          actuator_types: [motor]
       num_channels: 4
 
 parameters:
