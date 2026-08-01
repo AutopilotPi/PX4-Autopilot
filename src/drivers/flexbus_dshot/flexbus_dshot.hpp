@@ -1,6 +1,7 @@
 #pragma once
 
 #include <px4_platform_common/module.h>
+#include <px4_platform_common/atomic.h>
 #include <lib/mixer_module/mixer_module.hpp>
 #include <drivers/drv_hrt.h>
 #include <drivers/drv_dshot.h>
@@ -29,6 +30,7 @@ public:
 	static constexpr uint32_t DSHOT_DEFAULT_RATE = 600000;
 	static constexpr hrt_abstime ESC_INIT_DURATION = 1200_ms;
 	static constexpr hrt_abstime ESC_INIT_INTERVAL = 2_ms;
+	static constexpr unsigned COMMAND_QUEUE_SIZE = 4;
 	static constexpr const char *DEFAULT_DEVICE = "/dev/rk-flexbus-dshot";
 
 	FlexbusDShot(int fd, const char *device_name, uint32_t rate_hz, bool telemetry);
@@ -62,6 +64,9 @@ private:
 	static int open_device(const char *device_name, uint32_t rate_hz, bool telemetry);
 	bool send_frame(const rk_dshot_frame &frame);
 	int send_dshot_cmd(uint16_t cmd, int dshot_channel_mask);
+	int enqueue_command(dshot_command_t command, int num_repetitions, uint8_t motor_mask, bool save);
+	bool dequeue_command(Command &command);
+	void clear_command_queue();
 	void handle_vehicle_commands();
 	void update_params();
 
@@ -78,7 +83,13 @@ private:
 	bool _esc_init_done{false};
 	uint16_t _last_outputs[DSHOT_CHANNELS] {};
 	Command _current_command{};
+	Command _command_queue[COMMAND_QUEUE_SIZE] {};
+	unsigned _command_queue_head{0};
+	unsigned _command_queue_tail{0};
+	unsigned _command_queue_count{0};
+	px4::atomic_bool _armed{false};
 	pthread_mutex_t _mutex;
+	pthread_mutex_t _command_mutex;
 
 	perf_counter_t _cycle_perf{perf_alloc(PC_ELAPSED, MODULE_NAME": cycle")};
 	perf_counter_t _interval_perf{perf_alloc(PC_INTERVAL, MODULE_NAME": interval")};

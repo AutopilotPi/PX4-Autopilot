@@ -32,6 +32,7 @@ FlexbusDShot::FlexbusDShot(int fd, const char *device_name, uint32_t rate_hz, bo
 {
 	_mixing_output.setMaxNumOutputs(DSHOT_CHANNELS);
 	pthread_mutex_init(&_mutex, nullptr);
+	pthread_mutex_init(&_command_mutex, nullptr);
 	update_params();
 }
 
@@ -44,6 +45,7 @@ FlexbusDShot::~FlexbusDShot()
 		close(_fd);
 	}
 
+	pthread_mutex_destroy(&_command_mutex);
 	pthread_mutex_destroy(&_mutex);
 	perf_free(_cycle_perf);
 	perf_free(_interval_perf);
@@ -215,6 +217,62 @@ int FlexbusDShot::send_dshot_cmd(uint16_t cmd, int dshot_channel_mask)
 	return send_frame(frame) ? PX4_OK : PX4_ERROR;
 }
 
+int FlexbusDShot::enqueue_command(dshot_command_t command, int num_repetitions, uint8_t motor_mask, bool save)
+{
+	Command queued_command{};
+	queued_command.command = command;
+	queued_command.num_repetitions = num_repetitions;
+	queued_command.motor_mask = motor_mask;
+	queued_command.save = save;
+
+	pthread_mutex_lock(&_command_mutex);
+
+	if (_armed.load()) {
+		pthread_mutex_unlock(&_command_mutex);
+		PX4_WARN("DShot commands require disarmed outputs");
+		return -EBUSY;
+	}
+
+	if (_command_queue_count >= COMMAND_QUEUE_SIZE) {
+		pthread_mutex_unlock(&_command_mutex);
+		PX4_WARN("DShot command queue full");
+		return -EBUSY;
+	}
+
+	_command_queue[_command_queue_tail] = queued_command;
+	_command_queue_tail = (_command_queue_tail + 1) % COMMAND_QUEUE_SIZE;
+	++_command_queue_count;
+	pthread_mutex_unlock(&_command_mutex);
+
+	ScheduleNow();
+	return PX4_OK;
+}
+
+bool FlexbusDShot::dequeue_command(Command &command)
+{
+	pthread_mutex_lock(&_command_mutex);
+
+	if (_command_queue_count == 0) {
+		pthread_mutex_unlock(&_command_mutex);
+		return false;
+	}
+
+	command = _command_queue[_command_queue_head];
+	_command_queue_head = (_command_queue_head + 1) % COMMAND_QUEUE_SIZE;
+	--_command_queue_count;
+	pthread_mutex_unlock(&_command_mutex);
+	return true;
+}
+
+void FlexbusDShot::clear_command_queue()
+{
+	pthread_mutex_lock(&_command_mutex);
+	_command_queue_head = 0;
+	_command_queue_tail = 0;
+	_command_queue_count = 0;
+	pthread_mutex_unlock(&_command_mutex);
+}
+
 void FlexbusDShot::Run()
 {
 	if (should_exit()) {
@@ -250,6 +308,19 @@ void FlexbusDShot::Run()
 	}
 
 	_mixing_output.update();
+	const bool was_armed = _armed.load();
+	_armed.store(_mixing_output.armed().armed);
+
+	if (_armed.load()) {
+		if (_current_command.valid()) {
+			PX4_WARN("cancelling DShot command while armed");
+			_current_command = {};
+		}
+
+		if (!was_armed) {
+			clear_command_queue();
+		}
+	}
 
 	if (_parameter_update_sub.updated()) {
 		parameter_update_s pupdate;
@@ -258,6 +329,10 @@ void FlexbusDShot::Run()
 	}
 
 	handle_vehicle_commands();
+
+	if (!_armed.load() && !_current_command.valid()) {
+		dequeue_command(_current_command);
+	}
 
 	_mixing_output.updateSubscriptions(true);
 
@@ -268,7 +343,7 @@ void FlexbusDShot::handle_vehicle_commands()
 {
 	vehicle_command_s vehicle_command;
 
-	while (!_current_command.valid() && _vehicle_command_sub.update(&vehicle_command)) {
+	while (_vehicle_command_sub.update(&vehicle_command)) {
 		if (vehicle_command.command != vehicle_command_s::VEHICLE_CMD_CONFIGURE_ACTUATOR) {
 			continue;
 		}
@@ -326,11 +401,14 @@ void FlexbusDShot::handle_vehicle_commands()
 
 			} else {
 				PX4_DEBUG("setting DShot command: index: %i type: %i", index, type);
-				_current_command.command = command;
-				_current_command.motor_mask = 1u << index;
-				_current_command.num_repetitions = 10;
-				_current_command.save = true;
-				command_ack.result = vehicle_command_ack_s::VEHICLE_CMD_RESULT_ACCEPTED;
+				const int ret = enqueue_command(command, 10, 1u << index, true);
+
+				if (ret == PX4_OK) {
+					command_ack.result = vehicle_command_ack_s::VEHICLE_CMD_RESULT_ACCEPTED;
+
+				} else if (ret == -EBUSY) {
+					command_ack.result = vehicle_command_ack_s::VEHICLE_CMD_RESULT_TEMPORARILY_REJECTED;
+				}
 			}
 		}
 
@@ -421,6 +499,15 @@ int FlexbusDShot::custom_command(int argc, char *argv[])
 			PX4_ERR("instance not found");
 			return PX4_ERROR;
 		}
+
+		const int ret = instance->enqueue_command(static_cast<dshot_command_t>(cmd), repeat_cnt,
+				1u << motor_index, false);
+
+		if (ret == PX4_OK) {
+			PX4_INFO("queued DShot command %d for motor %d repeat %d", cmd, motor_index, repeat_cnt);
+		}
+
+		return ret;
 
 	} else {
 		fd = open_device(device_name, rate_hz, telemetry);
