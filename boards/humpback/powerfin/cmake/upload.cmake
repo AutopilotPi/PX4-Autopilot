@@ -39,6 +39,12 @@
 #   UPLOAD_PASSWORD=secret make humpback_powerfin upload
 #   UPLOAD_DELETE=1 make humpback_powerfin upload
 #   UPLOAD_SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/tmp/humpback_known_hosts" make humpback_powerfin upload
+#
+# Release:
+#   make humpback_powerfin release
+#
+# This creates ${PX4_BINARY_DIR}/px4-<git commit>.zip with the same px4
+# directory layout that the upload target copies to the remote system.
 
 add_custom_target(upload
 	COMMAND ${CMAKE_COMMAND}
@@ -48,6 +54,18 @@ add_custom_target(upload
 		-P ${PX4_BOARD_DIR}/cmake/upload_runtime.cmake
 	DEPENDS px4
 	COMMENT "uploading px4"
+	USES_TERMINAL
+	VERBATIM
+)
+
+add_custom_target(release
+	COMMAND ${CMAKE_COMMAND}
+		-D CMAKE_RUNTIME_OUTPUT_DIRECTORY=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+		-D PX4_SOURCE_DIR=${PX4_SOURCE_DIR}
+		-D PX4_BINARY_DIR=${PX4_BINARY_DIR}
+		-P ${PX4_BOARD_DIR}/cmake/release_runtime.cmake
+	DEPENDS px4
+	COMMENT "packaging px4 release"
 	USES_TERMINAL
 	VERBATIM
 )
