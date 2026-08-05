@@ -10,6 +10,7 @@
 #include <uORB/Publication.hpp>
 #include <uORB/Subscription.hpp>
 #include <uORB/topics/actuator_test.h>
+#include <uORB/topics/esc_status.h>
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/vehicle_command.h>
 #include <uORB/topics/vehicle_command_ack.h>
@@ -50,6 +51,23 @@ private:
 		uint16_t value[DSHOT_CHANNELS];
 	};
 
+	struct rk_dshot_telemetry {
+		uint32_t erpm[DSHOT_CHANNELS];
+		uint16_t raw[DSHOT_CHANNELS];
+		uint8_t valid_mask;
+		uint8_t no_response_mask;
+		uint16_t reserved;
+		uint32_t packet_count[DSHOT_CHANNELS];
+		uint32_t error_count[DSHOT_CHANNELS];
+	};
+
+	struct rk_dshot_telemetry_xfer {
+		rk_dshot_frame frame;
+		rk_dshot_telemetry telemetry;
+	};
+	static_assert(sizeof(rk_dshot_telemetry) == 60, "unexpected Flexbus DShot telemetry ABI size");
+	static_assert(sizeof(rk_dshot_telemetry_xfer) == 68, "unexpected Flexbus DShot telemetry transfer ABI size");
+
 	struct Command {
 		dshot_command_t command{DShot_cmd_motor_stop};
 		int num_repetitions{0};
@@ -68,20 +86,26 @@ private:
 	bool dequeue_command(Command &command);
 	void clear_command_queue();
 	void handle_vehicle_commands();
+	void publish_esc_status();
 	void update_params();
 
 	MixingOutput _mixing_output{PARAM_PREFIX, DSHOT_CHANNELS, *this, MixingOutput::SchedulingPolicy::Auto, false, false};
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 	uORB::Subscription _vehicle_command_sub{ORB_ID(vehicle_command)};
 	uORB::Publication<vehicle_command_ack_s> _command_ack_pub{ORB_ID(vehicle_command_ack)};
+	uORB::Publication<esc_status_s> _esc_status_pub{ORB_ID(esc_status)};
 
 	int _fd{-1};
 	const char *_device_name{DEFAULT_DEVICE};
 	uint32_t _rate_hz{DSHOT_DEFAULT_RATE};
 	bool _telemetry{false};
+	bool _telemetry_xfer_supported{true};
+	bool _telemetry_data_available{false};
 	hrt_abstime _esc_init_start{0};
 	bool _esc_init_done{false};
 	uint16_t _last_outputs[DSHOT_CHANNELS] {};
+	rk_dshot_telemetry _last_telemetry{};
+	uint16_t _esc_status_counter{0};
 	Command _current_command{};
 	Command _command_queue[COMMAND_QUEUE_SIZE] {};
 	unsigned _command_queue_head{0};
@@ -96,6 +120,7 @@ private:
 	perf_counter_t _io_error_perf{perf_alloc(PC_COUNT, MODULE_NAME": io errors")};
 
 	DEFINE_PARAMETERS(
-		(ParamFloat<px4::params::DSHOT_MIN>) _param_dshot_min
+		(ParamFloat<px4::params::DSHOT_MIN>) _param_dshot_min,
+		(ParamInt<px4::params::MOT_POLE_COUNT>) _param_mot_pole_count
 	)
 };

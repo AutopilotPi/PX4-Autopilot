@@ -32,3 +32,13 @@ parameters:
         decimal: 2
         increment: 0.01
         default: 0.055
+      MOT_POLE_COUNT:
+        description:
+          short: Number of magnetic poles of the motors
+          long: |
+            Specify the number of magnetic poles of the motors. This is used to
+            convert electrical RPM returned by bidirectional DShot telemetry to
+            mechanical RPM.
+        type: int32
+        min: 2
+        default: 14

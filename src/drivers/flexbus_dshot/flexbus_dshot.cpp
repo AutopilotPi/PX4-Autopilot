@@ -21,6 +21,7 @@ constexpr unsigned RK_DSHOT_MAX_RATE = 1200000;
 #define RK_DSHOT_IOC_SET_RATE      _IOW(RK_DSHOT_IOCTL_BASE, 0x00, uint32_t)
 #define RK_DSHOT_IOC_SET_TELEMETRY _IOW(RK_DSHOT_IOCTL_BASE, 0x01, uint32_t)
 #define RK_DSHOT_IOC_SEND_FRAME    _IOW(RK_DSHOT_IOCTL_BASE, 0x03, FlexbusDShot::rk_dshot_frame)
+#define RK_DSHOT_IOC_TELEMETRY_XFER _IOWR(RK_DSHOT_IOCTL_BASE, 0x06, FlexbusDShot::rk_dshot_telemetry_xfer)
 }
 
 FlexbusDShot::FlexbusDShot(int fd, const char *device_name, uint32_t rate_hz, bool telemetry) :
@@ -143,6 +144,26 @@ bool FlexbusDShot::send_frame(const rk_dshot_frame &frame)
 		return false;
 	}
 
+	if (_telemetry && _telemetry_xfer_supported) {
+		rk_dshot_telemetry_xfer telemetry_xfer{};
+		telemetry_xfer.frame = frame;
+
+		if (ioctl(_fd, RK_DSHOT_IOC_TELEMETRY_XFER, &telemetry_xfer) == 0) {
+			_last_telemetry = telemetry_xfer.telemetry;
+			_telemetry_data_available = true;
+			return true;
+		}
+
+		if (errno == ENOTTY || errno == EOPNOTSUPP) {
+			PX4_WARN("DShot RPM telemetry ioctl unsupported, using transmit-only mode");
+			_telemetry_xfer_supported = false;
+
+		} else {
+			perf_count(_io_error_perf);
+			return false;
+		}
+	}
+
 	if (ioctl(_fd, RK_DSHOT_IOC_SEND_FRAME, &frame) < 0) {
 		perf_count(_io_error_perf);
 		return false;
@@ -203,7 +224,53 @@ bool FlexbusDShot::updateOutputs(uint16_t outputs[MAX_ACTUATORS],
 
 	pthread_mutex_unlock(&_mutex);
 
+	if (ret && _telemetry_data_available) {
+		publish_esc_status();
+	}
+
 	return ret;
+}
+
+void FlexbusDShot::publish_esc_status()
+{
+	esc_status_s esc_status{};
+	esc_status.timestamp = hrt_absolute_time();
+	esc_status.counter = _esc_status_counter++;
+	esc_status.esc_connectiontype = esc_status_s::ESC_CONNECTION_TYPE_DSHOT;
+
+	const int pole_count = math::max(_param_mot_pole_count.get(), 2);
+	unsigned telemetry_index = 0;
+
+	for (unsigned channel = 0; channel < DSHOT_CHANNELS; ++channel) {
+		if (!_mixing_output.isFunctionSet(channel)) {
+			continue;
+		}
+
+		if (telemetry_index >= esc_status_s::CONNECTED_ESC_MAX) {
+			break;
+		}
+
+		esc_report_s &esc = esc_status.esc[telemetry_index];
+		esc.esc_address = telemetry_index + 1;
+		esc.actuator_function = static_cast<uint8_t>(_mixing_output.outputFunction(channel));
+		esc.esc_errorcount = _last_telemetry.error_count[channel];
+
+		if (_last_telemetry.valid_mask & (1u << channel)) {
+			esc.timestamp = esc_status.timestamp;
+			esc.esc_rpm = static_cast<int32_t>((static_cast<uint64_t>(_last_telemetry.erpm[channel]) * 2u) /
+						       static_cast<unsigned>(pole_count));
+			esc_status.esc_online_flags |= 1u << telemetry_index;
+		}
+
+		if (_armed.load()) {
+			esc_status.esc_armed_flags |= 1u << telemetry_index;
+		}
+
+		++telemetry_index;
+	}
+
+	esc_status.esc_count = telemetry_index;
+	_esc_status_pub.publish(esc_status);
 }
 
 int FlexbusDShot::send_dshot_cmd(uint16_t cmd, int dshot_channel_mask)
@@ -570,9 +637,18 @@ void FlexbusDShot::update_params()
 int FlexbusDShot::print_status()
 {
 	PX4_INFO("device: %s", _device_name);
-	PX4_INFO("rate: %u Hz, telemetry: %s", _rate_hz, _telemetry ? "enabled" : "disabled");
+	PX4_INFO("rate: %u Hz, RPM telemetry: %s", _rate_hz,
+		 _telemetry ? (_telemetry_xfer_supported ? "enabled" : "unsupported") : "disabled");
 	PX4_INFO("outputs: %u", DSHOT_CHANNELS);
 	PX4_INFO("ESC init: %s", _esc_init_done ? "complete" : "running");
+
+	if (_telemetry_data_available) {
+		PX4_INFO("RPM telemetry: valid=0x%02x no response=0x%02x eRPM=%u %u %u %u",
+			 _last_telemetry.valid_mask, _last_telemetry.no_response_mask,
+			 _last_telemetry.erpm[0], _last_telemetry.erpm[1],
+			 _last_telemetry.erpm[2], _last_telemetry.erpm[3]);
+	}
+
 	_mixing_output.printStatus();
 	perf_print_counter(_cycle_perf);
 	perf_print_counter(_interval_perf);
@@ -597,7 +673,7 @@ Drive DShot outputs through the Rockchip flexbus DShot kernel driver.
 	PRINT_MODULE_USAGE_COMMAND("start");
 	PRINT_MODULE_USAGE_PARAM_STRING('d', DEFAULT_DEVICE, nullptr, "Device path", true);
 	PRINT_MODULE_USAGE_PARAM_INT('r', DSHOT_DEFAULT_RATE, RK_DSHOT_MIN_RATE, RK_DSHOT_MAX_RATE, "DShot rate in Hz", true);
-	PRINT_MODULE_USAGE_PARAM_FLAG('t', "Enable DShot telemetry bit", true);
+	PRINT_MODULE_USAGE_PARAM_FLAG('t', "Enable bidirectional DShot RPM telemetry", true);
 	PRINT_MODULE_USAGE_COMMAND_DESCR("cmd", "Send DShot command to a motor");
 	PRINT_MODULE_USAGE_PARAM_INT('m', 0, 0, DSHOT_CHANNELS - 1, "Motor index", true);
 	PRINT_MODULE_USAGE_PARAM_INT('c', 0, 0, 47, "DShot command", true);
