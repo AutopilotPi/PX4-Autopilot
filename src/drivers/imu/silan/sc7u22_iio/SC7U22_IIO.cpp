@@ -548,7 +548,7 @@ int SC7U22_IIO::task_spawn(int argc, char *argv[])
 {
 	_task_id = px4_task_spawn_cmd(MODULE_NAME,
 				      SCHED_DEFAULT,
-				      SCHED_PRIORITY_FAST_DRIVER,
+				      SCHED_PRIORITY_ACTUATOR_OUTPUTS,
 				      3000,
 				      (px4_main_t)&run_trampoline,
 				      (char *const *)argv);
