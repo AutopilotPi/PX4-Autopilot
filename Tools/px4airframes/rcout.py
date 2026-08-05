@@ -77,8 +77,8 @@ class RCOutput():
         result += "\n"
         result += "if [ ${AIRFRAME} != none ]\n"
         result += "then\n"
-        result += "\techo \"Loading airframe: /etc/init.d/airframes/${AIRFRAME}\"\n"
-        result += "\t. /etc/init.d/airframes/${AIRFRAME}\n"
+        result += "\techo \"Loading airframe: ${R}etc/init.d/airframes/${AIRFRAME}\"\n"
+        result += "\t. \"${R}etc/init.d/airframes/${AIRFRAME}\"\n"
         result += "fi\n"
         result += "unset AIRFRAME"
         self.output = result
