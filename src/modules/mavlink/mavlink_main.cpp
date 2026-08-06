@@ -792,23 +792,29 @@ void Mavlink::send_finish()
 		if ((_mode != MAVLINK_MODE_ONBOARD) && broadcast_enabled() &&
 		    (!get_client_source_initialized() || !is_gcs_connected())) {
 
-			if (!_broadcast_address_found) {
+			if (_broadcast_address_count == 0) {
 				find_broadcast_address();
 			}
 
-			if (_broadcast_address_found && _buf_fill > 0) {
+			if (_broadcast_address_count > 0 && _buf_fill > 0) {
+				bool broadcast_failed = false;
+				int broadcast_errno = 0;
 
-				int bret = sendto(_socket_fd, _buf, _buf_fill, 0, (struct sockaddr *)&_bcast_addr, sizeof(_bcast_addr));
+				for (unsigned i = 0; i < _broadcast_address_count; ++i) {
+					const int bret = sendto(_socket_fd, _buf, _buf_fill, 0,
+								(struct sockaddr *)&_bcast_addrs[i], sizeof(_bcast_addrs[i]));
 
-				if (bret <= 0) {
-					if (!_broadcast_failed_warned) {
-						PX4_ERR("sending broadcast failed, errno: %d: %s", errno, strerror(errno));
-						_broadcast_failed_warned = true;
+					if (bret <= 0) {
+						broadcast_failed = true;
+						broadcast_errno = errno;
 					}
-
-				} else {
-					_broadcast_failed_warned = false;
 				}
+
+				if (broadcast_failed && !_broadcast_failed_warned) {
+					PX4_ERR("sending broadcast failed, errno: %d: %s", broadcast_errno, strerror(broadcast_errno));
+				}
+
+				_broadcast_failed_warned = broadcast_failed;
 			}
 		}
 	}
@@ -847,6 +853,8 @@ void Mavlink::find_broadcast_address()
 {
 	struct ifconf ifconf;
 	int ret;
+	const bool broadcast_all_interfaces = _interface_name && strcmp(_interface_name, "all") == 0;
+	_broadcast_address_count = 0;
 
 #if defined(__APPLE__) && defined(__MACH__) || defined(__CYGWIN__)
 	// On Mac, we can't determine the required buffer
@@ -934,30 +942,33 @@ void Mavlink::find_broadcast_address()
 			continue;
 		}
 
-		if (!_broadcast_address_found) {
-			const struct in_addr netmask_addr = query_netmask_addr(_socket_fd, *cur_ifreq);
-			const struct in_addr broadcast_addr = compute_broadcast_addr(sin_addr, netmask_addr);
+		if (_interface_name && !broadcast_all_interfaces && strstr(cur_ifreq->ifr_name, _interface_name) == nullptr) {
+			continue;
+		}
 
-			if (_interface_name && strstr(cur_ifreq->ifr_name, _interface_name) == nullptr) { continue; }
+		if (_broadcast_address_count >= MAX_BROADCAST_ADDRESSES) {
+			PX4_WARN("ignoring additional network interface %s: broadcast address limit reached", cur_ifreq->ifr_name);
+			continue;
+		}
 
-			PX4_INFO("using network interface %s, IP: %s", cur_ifreq->ifr_name, inet_ntoa(sin_addr));
-			PX4_INFO("with netmask: %s", inet_ntoa(netmask_addr));
-			PX4_INFO("and broadcast IP: %s", inet_ntoa(broadcast_addr));
+		const struct in_addr netmask_addr = query_netmask_addr(_socket_fd, *cur_ifreq);
+		const struct in_addr broadcast_addr = compute_broadcast_addr(sin_addr, netmask_addr);
 
-			_bcast_addr.sin_family = AF_INET;
-			_bcast_addr.sin_addr = broadcast_addr;
+		PX4_INFO("using network interface %s, IP: %s", cur_ifreq->ifr_name, inet_ntoa(sin_addr));
+		PX4_INFO("with netmask: %s", inet_ntoa(netmask_addr));
+		PX4_INFO("and broadcast IP: %s", inet_ntoa(broadcast_addr));
 
-			_broadcast_address_found = true;
+		sockaddr_in &bcast_addr = _bcast_addrs[_broadcast_address_count++];
+		bcast_addr.sin_family = AF_INET;
+		bcast_addr.sin_addr = broadcast_addr;
+		bcast_addr.sin_port = htons(_remote_port);
 
-		} else {
-			PX4_DEBUG("ignoring additional network interface %s, IP:  %s",
-				  cur_ifreq->ifr_name, inet_ntoa(sin_addr));
+		if (!broadcast_all_interfaces) {
+			break;
 		}
 	}
 
-	if (_broadcast_address_found) {
-		_bcast_addr.sin_port = htons(_remote_port);
-
+	if (_broadcast_address_count > 0) {
 		int broadcast_opt = 1;
 
 		if (setsockopt(_socket_fd, SOL_SOCKET, SO_BROADCAST, &broadcast_opt, sizeof(broadcast_opt)) < 0) {
@@ -3438,7 +3449,7 @@ $ mavlink stream -u 14556 -s HIGHRES_IMU -r 50
 #endif
 	PRINT_MODULE_USAGE_PARAM_STRING('m', "normal", "custom|camera|onboard|osd|magic|config|iridium|minimal|extvision|extvisionmin|gimbal|onboard_low_bandwidth|uavionix|low_bandwidth|distance_sensor",
 					"Mode: sets default streams and rates", true);
-	PRINT_MODULE_USAGE_PARAM_STRING('n', nullptr, "<interface_name>", "wifi/ethernet interface name", true);
+	PRINT_MODULE_USAGE_PARAM_STRING('n', nullptr, "<interface_name|all>", "wifi/ethernet interface name, or all private-network interfaces", true);
 #if defined(CONFIG_NET_IGMP) && defined(CONFIG_NET_ROUTE)
 	PRINT_MODULE_USAGE_PARAM_STRING('c', nullptr, "Multicast address in the range [239.0.0.0,239.255.255.255]", "Multicast address (multicasting can be enabled via MAV_{i}_BROADCAST param)", true);
 #endif
