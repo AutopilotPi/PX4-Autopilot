@@ -48,10 +48,9 @@ uint32_t configured_dshot_rate()
 }
 }
 
-FlexbusDShot::FlexbusDShot(int fd, const char *device_name, uint32_t rate_hz, bool telemetry) :
+FlexbusDShot::FlexbusDShot(int fd, uint32_t rate_hz, bool telemetry) :
 	OutputModuleInterface(MODULE_NAME, px4::wq_configurations::hp_default),
 	_fd(fd),
-	_device_name(device_name),
 	_rate_hz(rate_hz),
 	_telemetry(telemetry)
 {
@@ -146,7 +145,7 @@ int FlexbusDShot::task_spawn(int argc, char *argv[])
 		return PX4_ERROR;
 	}
 
-	FlexbusDShot *instance = new FlexbusDShot(fd, device_name, rate_hz, telemetry);
+	FlexbusDShot *instance = new FlexbusDShot(fd, rate_hz, telemetry);
 
 	if (instance == nullptr) {
 		PX4_ERR("failed to allocate instance");
@@ -510,39 +509,24 @@ void FlexbusDShot::handle_vehicle_commands()
 
 int FlexbusDShot::custom_command(int argc, char *argv[])
 {
-	int arg_index = 0;
+	if (argc < 1 || strcmp(argv[0], "cmd")) {
+		return print_usage("unknown command");
+	}
+
+	if (!is_running()) {
+		PX4_ERR("not running");
+		return PX4_ERROR;
+	}
+
+	int arg_index = 1;
 	int motor_index = 0;
 	int cmd = 0;
 	int repeat_cnt = 1;
-	const char *device_name = DEFAULT_DEVICE;
-	uint32_t rate_hz = configured_dshot_rate();
-	bool telemetry = false;
-
-	if (argc > 0 && !strcmp(argv[0], "cmd")) {
-		arg_index = 1;
-	}
 
 	while (arg_index < argc) {
 		const char *arg = argv[arg_index++];
 
-		if (!strcmp(arg, "-d")) {
-			if (arg_index >= argc) {
-				return print_usage("missing -d argument");
-			}
-
-			device_name = argv[arg_index++];
-
-		} else if (!strcmp(arg, "-r")) {
-			if (arg_index >= argc) {
-				return print_usage("missing -r argument");
-			}
-
-			rate_hz = strtoul(argv[arg_index++], nullptr, 0);
-
-		} else if (!strcmp(arg, "-t")) {
-			telemetry = true;
-
-		} else if (!strcmp(arg, "-m")) {
+		if (!strcmp(arg, "-m")) {
 			if (arg_index >= argc) {
 				return print_usage("missing -m argument");
 			}
@@ -580,70 +564,21 @@ int FlexbusDShot::custom_command(int argc, char *argv[])
 		}
 	}
 
-	int fd = -1;
-	FlexbusDShot *instance = nullptr;
+	FlexbusDShot *instance = _object.load();
 
-	if (is_running()) {
-		instance = _object.load();
-
-		if (instance == nullptr) {
-			PX4_ERR("instance not found");
-			return PX4_ERROR;
-		}
-
-		const int ret = instance->enqueue_command(static_cast<dshot_command_t>(cmd), repeat_cnt,
-				1u << motor_index, false);
-
-		if (ret == PX4_OK) {
-			PX4_INFO("queued DShot command %d for motor %d repeat %d", cmd, motor_index, repeat_cnt);
-		}
-
-		return ret;
-
-	} else {
-		fd = open_device(device_name, rate_hz, telemetry);
-
-		if (fd < 0) {
-			return PX4_ERROR;
-		}
-
-		instance = new FlexbusDShot(fd, device_name, rate_hz, telemetry);
-
-		if (instance == nullptr) {
-			PX4_ERR("failed to allocate temporary instance");
-			close(fd);
-			return PX4_ERROR;
-		}
-	}
-
-	int ret = PX4_OK;
-
-	pthread_mutex_lock(&instance->_mutex);
-
-	for (int i = 0; i < repeat_cnt; ++i) {
-		ret = instance->send_dshot_cmd(cmd, 1 << motor_index);
-
-		if (ret != PX4_OK) {
-			break;
-		}
-
-		usleep(200);
-	}
-
-	usleep(260000);
-	pthread_mutex_unlock(&instance->_mutex);
-
-	if (fd >= 0) {
-		delete instance;
-	}
-
-	if (ret != PX4_OK) {
-		PX4_ERR("failed to send DShot command");
+	if (instance == nullptr) {
+		PX4_ERR("instance not found");
 		return PX4_ERROR;
 	}
 
-	PX4_INFO("sent DShot command %d to motor %d repeat %d", cmd, motor_index, repeat_cnt);
-	return PX4_OK;
+	const int ret = instance->enqueue_command(static_cast<dshot_command_t>(cmd), repeat_cnt,
+			1u << motor_index, false);
+
+	if (ret == PX4_OK) {
+		PX4_INFO("queued DShot command %d for motor %d repeat %d", cmd, motor_index, repeat_cnt);
+	}
+
+	return ret;
 }
 
 void FlexbusDShot::update_params()
@@ -660,7 +595,6 @@ void FlexbusDShot::update_params()
 
 int FlexbusDShot::print_status()
 {
-	PX4_INFO("device: %s", _device_name);
 	PX4_INFO("rate: %u Hz, RPM telemetry: %s", _rate_hz,
 		 _telemetry ? (_telemetry_xfer_supported ? "enabled" : "unsupported") : "disabled");
 	PX4_INFO("outputs: %u", DSHOT_CHANNELS);

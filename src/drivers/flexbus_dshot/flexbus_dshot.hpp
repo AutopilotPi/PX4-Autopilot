@@ -34,7 +34,7 @@ public:
 	static constexpr unsigned COMMAND_QUEUE_SIZE = 4;
 	static constexpr const char *DEFAULT_DEVICE = "/dev/rk-flexbus-dshot";
 
-	FlexbusDShot(int fd, const char *device_name, uint32_t rate_hz, bool telemetry);
+	FlexbusDShot(int fd, uint32_t rate_hz, bool telemetry);
 	~FlexbusDShot() override;
 
 	static int task_spawn(int argc, char *argv[]);
@@ -96,7 +96,6 @@ private:
 	uORB::Publication<esc_status_s> _esc_status_pub{ORB_ID(esc_status)};
 
 	int _fd{-1};
-	const char *_device_name{DEFAULT_DEVICE};
 	uint32_t _rate_hz{DSHOT_DEFAULT_RATE};
 	bool _telemetry{false};
 	bool _telemetry_xfer_supported{true};
