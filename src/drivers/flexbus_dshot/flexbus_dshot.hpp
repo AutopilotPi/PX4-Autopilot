@@ -28,7 +28,7 @@ public:
 	static constexpr uint16_t DSHOT_MIN_THROTTLE = 1;
 	static constexpr uint16_t DSHOT_MAX_THROTTLE = 1999;
 	static constexpr uint16_t DSHOT_COMMAND_OFFSET = DShot_cmd_MIN_throttle;
-	static constexpr uint32_t DSHOT_DEFAULT_RATE = 600000;
+	static constexpr uint32_t DSHOT_DEFAULT_RATE = 300000;
 	static constexpr hrt_abstime ESC_INIT_DURATION = 1200_ms;
 	static constexpr hrt_abstime ESC_INIT_INTERVAL = 2_ms;
 	static constexpr unsigned COMMAND_QUEUE_SIZE = 4;

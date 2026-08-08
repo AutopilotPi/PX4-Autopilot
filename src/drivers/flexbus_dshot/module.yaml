@@ -1,5 +1,8 @@
 module_name: Flexbus DShot Output
 actuator_output:
+  config_parameters:
+    - param: 'FB_DSHOT_RATE'
+      label: 'DShot rate'
   output_groups:
     - param_prefix: PWM_MAIN
       channel_label: 'Channel'
@@ -18,6 +21,20 @@ actuator_output:
 parameters:
   - group: DShot
     definitions:
+      FB_DSHOT_RATE:
+        description:
+          short: Flexbus DShot output rate
+          long: |
+            Select the DShot protocol rate used by the Rockchip Flexbus DShot
+            output driver. The new value takes effect after reboot. A rate
+            explicitly supplied with the command-line -r option takes priority.
+        type: enum
+        values:
+          150000: DShot150
+          300000: DShot300
+          600000: DShot600
+        default: 300000
+        reboot_required: true
       DSHOT_MIN:
         description:
           short: Minimum DShot Motor Output

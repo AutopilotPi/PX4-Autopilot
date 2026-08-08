@@ -4,6 +4,8 @@
 #include <px4_platform_common/log.h>
 #include <px4_platform_common/posix.h>
 
+#include <parameters/param.h>
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -22,6 +24,28 @@ constexpr unsigned RK_DSHOT_MAX_RATE = 1200000;
 #define RK_DSHOT_IOC_SET_TELEMETRY _IOW(RK_DSHOT_IOCTL_BASE, 0x01, uint32_t)
 #define RK_DSHOT_IOC_SEND_FRAME    _IOW(RK_DSHOT_IOCTL_BASE, 0x03, FlexbusDShot::rk_dshot_frame)
 #define RK_DSHOT_IOC_TELEMETRY_XFER _IOWR(RK_DSHOT_IOCTL_BASE, 0x06, FlexbusDShot::rk_dshot_telemetry_xfer)
+
+uint32_t configured_dshot_rate()
+{
+	int32_t rate = FlexbusDShot::DSHOT_DEFAULT_RATE;
+	const param_t handle = param_find("FB_DSHOT_RATE");
+
+	if (handle == PARAM_INVALID || param_get(handle, &rate) != PX4_OK) {
+		PX4_WARN("failed to read FB_DSHOT_RATE, using DShot300");
+		return FlexbusDShot::DSHOT_DEFAULT_RATE;
+	}
+
+	switch (rate) {
+	case 150000:
+	case 300000:
+	case 600000:
+		return static_cast<uint32_t>(rate);
+
+	default:
+		PX4_WARN("invalid FB_DSHOT_RATE: %d, using DShot300", rate);
+		return FlexbusDShot::DSHOT_DEFAULT_RATE;
+	}
+}
 }
 
 FlexbusDShot::FlexbusDShot(int fd, const char *device_name, uint32_t rate_hz, bool telemetry) :
@@ -94,7 +118,7 @@ int FlexbusDShot::task_spawn(int argc, char *argv[])
 	int ch;
 
 	const char *device_name = DEFAULT_DEVICE;
-	uint32_t rate_hz = DSHOT_DEFAULT_RATE;
+	uint32_t rate_hz = configured_dshot_rate();
 	bool telemetry = false;
 
 	while ((ch = px4_getopt(argc, argv, "d:r:t", &myoptind, &myoptarg)) != EOF) {
@@ -491,7 +515,7 @@ int FlexbusDShot::custom_command(int argc, char *argv[])
 	int cmd = 0;
 	int repeat_cnt = 1;
 	const char *device_name = DEFAULT_DEVICE;
-	uint32_t rate_hz = DSHOT_DEFAULT_RATE;
+	uint32_t rate_hz = configured_dshot_rate();
 	bool telemetry = false;
 
 	if (argc > 0 && !strcmp(argv[0], "cmd")) {
